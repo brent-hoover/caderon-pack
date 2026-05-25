@@ -9,9 +9,9 @@
   },
   "plugins": [
     {
-      "name": "caderon-pack",
-      "description": "Personal Claude Code plugin — start-feature skill for problem/design/plan workflow",
-      "source": ".",
+      "name": "doc-driven-development",
+      "description": "Guides Claude through problem → design → plan documentation workflow for new features",
+      "source": "./plugins/doc-driven-development",
       "category": "workflow"
     }
   ]
