@@ -1,0 +1,13 @@
+{
+  "name": "caderon-pack",
+  "version": "1.0.0",
+  "description": "Personal Claude Code plugin pack — skills, commands, and hooks for Brent's workflow",
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": ["personal", "workflow", "feature-docs", "start-feature"]
+}

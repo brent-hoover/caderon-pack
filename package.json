@@ -1,0 +1,30 @@
+{
+  "name": "caderon-pack",
+  "version": "1.0.0",
+  "description": "Personal Claude Code plugin pack",
+  "type": "module",
+  "files": [
+    "README.md",
+    ".claude-plugin/",
+    "skills/"
+  ],
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "workflow",
+    "feature-docs"
+  ],
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brent-hoover/caderon-pack.git"
+  },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "publishConfig": {
+    "access": "public"
+  }
+}
