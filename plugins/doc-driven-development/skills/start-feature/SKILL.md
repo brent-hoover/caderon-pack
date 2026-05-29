@@ -25,10 +25,16 @@ Before entering any phase:
 Check if an argument was passed (e.g., `/start-feature my-feature`). If yes, use it. If not,
 ask: "What's the feature slug? Use kebab-case — e.g. `user-auth`, `billing-export`."
 
-**2. Detect doc convention** by reading the project's `CLAUDE.md` with the Read tool:
+**2 Start a worktree
 
-- Mentions `feature-work/` → doc root is `feature-work/`
-- Otherwise → doc root is `docs/`
+Before starting on any new code, create a new git worktree with the feature slug
+
+**3. Confirm or create the doc root
+
+The doc route should be $PROJECT_ROOT/feature-work/
+
+If that directory does not exist, create it
+ALL FEATURE WORK DOCS NEED TO GO IN THE $DOC_ROOT
 
 Announce: `Writing docs to <doc-root>/<slug>/`
 
@@ -56,6 +62,9 @@ git config user.name  # owner
 ## PHASE: PROBLEM
 
 Announce: **[PHASE: PROBLEM]**
+
+If start-feature was launched after a discussion of the problem, then use that to full out the problem
+template yourself. If not then do these steps
 
 Ask these questions **one at a time**. Wait for the complete answer before asking the next.
 
