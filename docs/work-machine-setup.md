@@ -183,6 +183,20 @@ after this (or better, get them into a plugin and leave the dir to roborev only)
 
 ---
 
+## Step 5b — Sync skills to Codex (if you use Codex on this machine)
+
+caderon-pack skills are Claude Code plugins; Codex needs its own copy. After the plugins are
+installed (Step 4) and roborev skills are in place (Step 5):
+
+```bash
+cd ~/Projects/personal/caderon-pack   # or wherever your clone is
+./scripts/sync-codex-skills.py
+```
+
+This copies the enabled plugins' skills into `~/.codex/skills/` (respects the work profile, so
+`devops` skills sync here too). roborev already installed its own skills to Codex in Step 5.
+Re-run this script after any `claude plugin update`.
+
 ## Step 6 — Restart and verify
 
 Restart Claude Code (the running process holds previously-loaded skills; new sessions load

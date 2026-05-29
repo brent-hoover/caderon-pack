@@ -50,6 +50,24 @@ plugin's version, push, then `claude plugin marketplace update caderon-pack`.
 > take effect after `git push`. To test local edits without pushing, add a directory-source
 > override for `caderon-pack` in `~/.claude/settings.local.json` (untracked, machine-local).
 
+## Codex
+
+Codex shares the Agent Skills (`SKILL.md`) format but doesn't read Claude's plugin
+marketplace. `scripts/sync-codex-skills.py` copies the skills from whichever caderon-pack
+plugins are **enabled on this machine** (read from `~/.claude/settings.json`) into
+`~/.codex/skills/`, using the newest installed version of each from Claude's plugin cache:
+
+```bash
+./scripts/sync-codex-skills.py            # or --dry-run to preview
+```
+
+It's idempotent and only manages skills it installed (marked with a `.caderon-synced` file) —
+it never touches roborev's skills (roborev installs those to `~/.codex/skills/` itself) or
+Codex internals. Re-run it after `claude plugin update` to refresh Codex. It respects the
+machine profile automatically (e.g. `devops` skills sync only on work machines).
+
+Other agents (Gemini, Cursor, OpenCode) use different conventions and are not synced.
+
 ## Doc conventions (doc-driven-development)
 
 The `start-feature` skill auto-detects your project's doc root from `CLAUDE.md`:
