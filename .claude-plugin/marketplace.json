@@ -13,6 +13,24 @@
       "description": "Guides Claude through problem → design → plan documentation workflow for new features",
       "source": "./plugins/doc-driven-development",
       "category": "workflow"
+    },
+    {
+      "name": "core",
+      "description": "Always-on skills: roborev review workflow, code explanation, conventional commits, codebase visualization, code quality, git, and Vue/TypeScript frontend work",
+      "source": "./plugins/core",
+      "category": "workflow"
+    },
+    {
+      "name": "go",
+      "description": "Go development skills: backend workflow, concurrency, error handling, interfaces",
+      "source": "./plugins/go",
+      "category": "development"
+    },
+    {
+      "name": "devops",
+      "description": "Kubernetes and Helm skills: manifest generation, security policies, Helm debugging, values management",
+      "source": "./plugins/devops",
+      "category": "devops"
     }
   ]
 }
