@@ -16,7 +16,7 @@
     },
     {
       "name": "core",
-      "description": "Always-on skills: roborev review workflow, code explanation, conventional commits, codebase visualization, code quality, git, and Vue/TypeScript frontend work",
+      "description": "Always-on skills: code explanation, conventional commits, codebase visualization, code quality, git, and Vue/TypeScript frontend work",
       "source": "./plugins/core",
       "category": "workflow"
     },

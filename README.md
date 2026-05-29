@@ -7,10 +7,16 @@ organized into plugins that are enabled per machine.
 
 | Plugin | Enabled on | Contents |
 |--------|-----------|----------|
-| `core` | all machines | roborev review workflow (7), `explain-code`, `conventional-commit`, `codebase-visualizer`, `code-quality`, `git-master`, `vue-typescript` |
+| `core` | all machines | `explain-code`, `conventional-commit`, `codebase-visualizer`, `code-quality`, `git-master`, `vue-typescript` |
 | `go` | all machines | `go-backend-workflow`, `go-concurrency-patterns`, `go-error-handling`, `go-interfaces` |
 | `devops` | work machines only | `helm-debugging`, `helm-values-management`, `k8s-manifest-generator`, `k8s-security-policies` |
 | `doc-driven-development` | all machines | `start-feature` — `problem → design → plan` documentation workflow (`/start-feature [slug]`) |
+
+The **roborev** skills (`roborev-review`, `roborev-fix`, etc.) are intentionally **not** in any
+plugin — they are owned by the `roborev` CLI, which installs them into `~/.claude/skills/` and
+keeps them current. Install/refresh per machine with `roborev skills install` (and
+`roborev update` / `roborev skills update` for updates). chezmoi ignores `.claude/skills/**`, so
+it won't fight roborev over them.
 
 ## Installation
 
