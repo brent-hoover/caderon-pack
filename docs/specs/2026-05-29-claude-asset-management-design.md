@@ -127,6 +127,22 @@ machine selection via one templated `enabledPlugins` list.
   now; revisit if MCP servers diverge across machines.
 - Migrating `doc-driven-development` — it already lives in caderon-pack, unchanged.
 
+## Addendum (2026-05-29, post-implementation)
+
+The 7 `roborev-*` skills were initially vendored into `core` but then **removed** (core → v1.1.0,
+6 skills). Reason: the `roborev` CLI is their source of truth — `roborev skills install` writes
+them to `~/.claude/skills/` and `roborev update` / `roborev skills update` refresh them. Vendoring
+produced a stale snapshot and would collide (duplicate skill names) with a `roborev skills install`.
+
+New lane ownership:
+- caderon-pack plugins (`core`/`go`/`devops`) → curated/vendored skills
+- **roborev CLI** → its 7 skills, installed per machine via `roborev skills install`
+- official plugins → everything else
+
+Consequence: `~/.claude/skills/` is **not** empty — it holds the roborev-managed skills. chezmoi
+already ignores `.claude/skills/**`, so it does not conflict. Total now: 14 skills across the 3
+caderon-pack plugins (was 21) + 7 roborev skills owned by the CLI.
+
 ## Verification
 
 - Personal profile: `core` + `go` skills (17) listed by Claude; no `devops`

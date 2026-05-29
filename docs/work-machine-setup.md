@@ -37,11 +37,16 @@ done
 
 Compare against what the plugins already provide:
 
-| Plugin | Skills |
+| Plugin / source | Skills |
 |--------|--------|
-| `core` | roborev-design-review, roborev-design-review-branch, roborev-fix, roborev-refine, roborev-respond, roborev-review, roborev-review-branch, explain-code, conventional-commit, codebase-visualizer, code-quality, git-master, vue-typescript |
-| `go` | go-backend-workflow, go-concurrency-patterns, go-error-handling, go-interfaces |
-| `devops` | helm-debugging, helm-values-management, k8s-manifest-generator, k8s-security-policies |
+| `core` plugin | explain-code, conventional-commit, codebase-visualizer, code-quality, git-master, vue-typescript |
+| `go` plugin | go-backend-workflow, go-concurrency-patterns, go-error-handling, go-interfaces |
+| `devops` plugin | helm-debugging, helm-values-management, k8s-manifest-generator, k8s-security-policies |
+| **roborev CLI** (not a plugin) | roborev-design-review, roborev-design-review-branch, roborev-fix, roborev-refine, roborev-respond, roborev-review, roborev-review-branch |
+
+The **roborev** skills are owned by the `roborev` CLI, not caderon-pack. They are installed into
+`~/.claude/skills/` by `roborev skills install` and refreshed by `roborev update` /
+`roborev skills update`. Do not vendor them into a plugin — you'd get stale duplicates.
 
 For anything on the work machine **not** covered above and worth keeping:
 - If it's generally useful → add it to `core`/`go`/`devops` (copy into `plugins/<p>/skills/`,
@@ -141,7 +146,7 @@ claude plugin install core@caderon-pack go@caderon-pack devops@caderon-pack doc-
 Verify the skills landed in the plugin cache (note the version subdir — use a full `find`, not
 `-maxdepth 2`):
 ```bash
-find ~/.claude/plugins/cache/caderon-pack/core   -name SKILL.md | wc -l   # 13
+find ~/.claude/plugins/cache/caderon-pack/core   -name SKILL.md | wc -l   # 6
 find ~/.claude/plugins/cache/caderon-pack/go     -name SKILL.md | wc -l   # 4
 find ~/.claude/plugins/cache/caderon-pack/devops -name SKILL.md | wc -l   # 4
 ```
@@ -167,10 +172,14 @@ mkdir -p ~/.claude/skills
 
 # Confirm empty
 find ~/.claude/skills -mindepth 1 | wc -l   # 0
+
+# Repopulate the roborev skills from their owner (the rm above removed them too)
+roborev skills install
+find ~/.claude/skills -mindepth 1 -maxdepth 1 | wc -l   # 7 (the roborev skills)
 ```
 
 If you stashed keepers in `~/.claude/skills-keep`, move them back into `~/.claude/skills/`
-after this (or better, get them into a plugin and leave the dir empty).
+after this (or better, get them into a plugin and leave the dir to roborev only).
 
 ---
 
