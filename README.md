@@ -1,54 +1,50 @@
 # caderon-pack
 
-Personal Claude Code plugin pack. Skills, commands, and hooks for Brent's workflow.
+Personal Claude Code plugin marketplace. Skills, commands, and hooks for Brent's workflow,
+organized into plugins that are enabled per machine.
 
-## Skills
+## Plugins
 
-### start-feature
-
-Guides Claude through the full `problem → design → plan` documentation workflow for a new
-feature. Four-phase state machine with approval gates. Claude generates content from targeted
-questions; you review and approve each doc before advancing.
-
-**Trigger:** Say "start a feature", "new feature", or `/start-feature [slug]`.
-
-**Output:** `problem.md`, `design.md` (unless trivial), `plan.md` in your project's doc
-directory.
-
-**Templates included:** problem, design, plan, deferred, completed.
+| Plugin | Enabled on | Contents |
+|--------|-----------|----------|
+| `core` | all machines | roborev review workflow (7), `explain-code`, `conventional-commit`, `codebase-visualizer`, `code-quality`, `git-master`, `vue-typescript` |
+| `go` | all machines | `go-backend-workflow`, `go-concurrency-patterns`, `go-error-handling`, `go-interfaces` |
+| `devops` | work machines only | `helm-debugging`, `helm-values-management`, `k8s-manifest-generator`, `k8s-security-policies` |
+| `doc-driven-development` | all machines | `start-feature` — `problem → design → plan` documentation workflow (`/start-feature [slug]`) |
 
 ## Installation
 
-### Local install (any machine)
+Skills are distributed as plugins from this GitHub marketplace and enabled declaratively in
+`~/.claude/settings.json` (managed by chezmoi, templated per machine). On a fresh machine:
 
 ```bash
-git clone https://github.com/brent-hoover/caderon-pack ~/path/to/caderon-pack
-claude plugins marketplace add ~/path/to/caderon-pack
-claude plugins install caderon-pack
+chezmoi apply               # writes settings.json with the caderon-pack marketplace + enabled plugins
+# launch Claude Code, or install explicitly:
+claude plugin marketplace add brent-hoover/caderon-pack
+claude plugin install core@caderon-pack go@caderon-pack doc-driven-development@caderon-pack -s user
 ```
 
-Restart Claude Code to activate.
+Claude resolves the marketplace from GitHub and installs the enabled plugins. Manual
+installs are scoped to `user`.
 
-### Via chezmoi (optional — for cross-machine sync)
+## Machine profiles
 
-Add to `~/.local/share/chezmoi/.chezmoiexternal.toml`:
+The per-machine skill set is driven by the `is_personal_machine` chezmoi data var
+(`~/.config/chezmoi/chezmoi.yaml`) and the templated `dot_claude/settings.json.tmpl` in the
+chezmoi repo:
 
-```toml
-[".claude/plugins/caderon-pack"]
-  type = "git-repo"
-  url = "https://github.com/brent-hoover/caderon-pack.git"
-  refreshPeriod = "168h"
-```
+- **Personal machines** (`is_personal_machine: true`): `core`, `go`, `doc-driven-development`.
+- **Work machines**: set `is_personal_machine: false` in `~/.config/chezmoi/chezmoi.yaml`
+  before `chezmoi apply`; this additionally enables the `devops` plugin.
 
-Then register and install once per machine:
+To add a skill to a machine class, move it into the appropriate plugin here, bump that
+plugin's version, push, then `claude plugin marketplace update caderon-pack`.
 
-```bash
-chezmoi apply
-claude plugins marketplace add ~/.claude/plugins/caderon-pack
-claude plugins install caderon-pack
-```
+> **Local development:** because the marketplace source is GitHub, edits to this repo only
+> take effect after `git push`. To test local edits without pushing, add a directory-source
+> override for `caderon-pack` in `~/.claude/settings.local.json` (untracked, machine-local).
 
-## Doc conventions
+## Doc conventions (doc-driven-development)
 
 The `start-feature` skill auto-detects your project's doc root from `CLAUDE.md`:
 
@@ -58,7 +54,7 @@ The `start-feature` skill auto-detects your project's doc root from `CLAUDE.md`:
 When a feature is complete, write `completed.md` then move the directory to
 `<doc-root>/archived/<slug>/`.
 
-## Future
+## Design docs
 
-- npm publishing (`npm install -g caderon-pack`)
-- Additional skills and commands as needed
+- `docs/specs/2026-05-29-claude-asset-management-design.md`
+- `docs/plans/2026-05-29-claude-asset-management.md`
