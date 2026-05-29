@@ -68,7 +68,7 @@ Skills are **vendored into these plugins** (copied from the current
   `roborev-design-review`, `roborev-design-review-branch`, `roborev-fix`,
   `roborev-refine`, `roborev-respond`, `roborev-review`, `roborev-review-branch`,
   `explain-code`, `conventional-commit`, `codebase-visualizer`, `code-quality`,
-  `git-master`
+  `git-master`, `vue-typescript`
 - **`go`** (all machines):
   `go-backend-workflow`, `go-concurrency-patterns`, `go-error-handling`,
   `go-interfaces`
@@ -100,12 +100,11 @@ them, so the vendored copies go:
 `agent-development`, `hook-development`, `mcp-integration`, `plugin-structure`
 (all from `plugin-dev`), `frontend-design` (from the `frontend-design` plugin).
 
-**Junk / low-quality / off-stack (5):**
+**Junk / low-quality / off-stack (4):**
 - `skill-adapter` — origin is a `backups/helm-chart-generator` folder; name does
   not match content.
 - `kubernetes-secrets-manager` — auto-generated stub, low quality.
 - `template` — empty skill stub; `skill-creator` plugin covers this.
-- `vue-typescript` — not in the user's stack.
 - `git-advanced-workflows` — superseded by `git-master`.
 
 **`find-skills` symlink** — drop (can be re-added to `core` later if missed).
@@ -119,7 +118,7 @@ them, so the vendored copies go:
 
 ## Outcome
 
-31 loose skills → **20 repackaged** into 3 versioned plugins, **11 deleted**,
+31 loose skills → **21 repackaged** into 3 versioned plugins, **10 deleted**,
 machine selection via one templated `enabledPlugins` list.
 
 ## Out of scope
@@ -130,9 +129,9 @@ machine selection via one templated `enabledPlugins` list.
 
 ## Verification
 
-- Personal profile: `core` + `go` skills (16) listed by Claude; no `devops`
+- Personal profile: `core` + `go` skills (17) listed by Claude; no `devops`
   skills present.
-- Work profile (`is_work = true`): all 20 skills present.
+- Work profile (`is_work = true`): all 21 skills present.
 - `~/.claude/skills/` contains no vendored duplicates of plugin-provided skills.
 - chezmoi diff shows no machine-state files tracked.
 - caderon-pack `marketplace.json` validates and each new plugin loads.
