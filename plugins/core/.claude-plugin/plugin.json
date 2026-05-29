@@ -1,0 +1,10 @@
+{
+  "name": "core",
+  "version": "1.0.0",
+  "description": "Brent's always-on skills: roborev review workflow, code explanation, conventional commits, codebase visualization, code quality, git, and Vue/TypeScript frontend work",
+  "author": { "name": "Brent Hoover", "email": "brent@thebuddhalodge.com" },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": ["roborev", "code-review", "git", "conventional-commit", "vue", "typescript"]
+}
