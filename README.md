@@ -10,7 +10,7 @@ organized into plugins that are enabled per machine.
 | `core` | all machines | `explain-code`, `conventional-commit`, `codebase-visualizer`, `code-quality`, `git-master`, `git-worktrees`, `vue-typescript` |
 | `go` | all machines | `go-backend-workflow`, `go-concurrency-patterns`, `go-error-handling`, `go-interfaces` |
 | `devops` | work machines only | `helm-debugging`, `helm-values-management`, `k8s-manifest-generator`, `k8s-security-policies` |
-| `doc-driven-development` | all machines | `start-feature` — `problem → design → plan` documentation workflow (`/start-feature [slug]`), with `problem-reviewer` / `design-reviewer` / `plan-reviewer` Opus agents vetting each doc |
+| `doc-driven-development` | all machines | `start-feature` (`problem → design → plan`) + `close-feature` (revisit deferred → completed → archive) documentation lifecycle, with `problem-reviewer` / `design-reviewer` / `plan-reviewer` / `completion-reviewer` Opus agents vetting each doc |
 
 The **roborev** skills (`roborev-review`, `roborev-fix`, etc.) are intentionally **not** in any
 plugin — they are owned by the `roborev` CLI, which installs them into `~/.claude/skills/` and
@@ -75,8 +75,9 @@ The `start-feature` skill auto-detects your project's doc root from `CLAUDE.md`:
 - Projects with `feature-work/` convention → writes to `feature-work/<slug>/`
 - All others → writes to `docs/<slug>/`
 
-When a feature is complete, write `completed.md` then move the directory to
-`<doc-root>/archived/<slug>/`.
+During implementation, punted work is logged to `deferred.md`. When a feature is complete, run
+`/close-feature`: it revisits `deferred.md` (do now / keep deferred / permanently drop), writes
+`completed.md`, and moves the directory to `<doc-root>/archived/<slug>/`.
 
 ## Design docs
 

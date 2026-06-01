@@ -62,11 +62,6 @@ is now in the codebase as a result of this work.
 
 -
 
-## Archiving
-
-When this record is complete, move the feature directory to `<doc-root>/archived/<slug>/`
-to keep the doc root reflecting only in-progress work.
-
 ## Change log
 
 - YYYY-MM-DD: Completed (<username>)

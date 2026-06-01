@@ -223,17 +223,13 @@ Committed: docs(<slug>): add problem/design/plan
 
 ---
 
-## Additional templates (outside the main pipeline)
+## After planning
 
-**deferred.md** — write when a planned item is intentionally skipped during implementation.
-Document what was skipped and the specific reason. Review at project close.
+Implementation happens after this workflow. Two things carry through it:
 
-Read from: `${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/deferred.md`
-
-**completed.md** — write when the feature ships. The handoff manifest: new modules,
-dependencies, interface changes, follow-ups.
-
-Read from: `${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/completed.md`
-
-**Archiving**: once `completed.md` is written, move `<doc-root>/<slug>/` to
-`<doc-root>/archived/<slug>/` so the doc root reflects only current in-progress work.
+- **`deferred.md`** — as you punt nice-to-haves, edge cases, or anything descoped to ship sooner,
+  append an item to `<doc-root>/<slug>/deferred.md` (create it on first use from
+  `${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/deferred.md`). It's just a running catalog;
+  it gets resolved later.
+- **When the work is done, run `/close-feature`** — it revisits `deferred.md` (do now / keep
+  deferred / permanently drop), writes `completed.md`, and archives the feature dir.

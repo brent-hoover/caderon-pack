@@ -1,7 +1,7 @@
 {
   "name": "doc-driven-development",
-  "version": "1.1.0",
-  "description": "Guides Claude through problem → design → plan documentation workflow for new features, with an Opus reviewer agent vetting each doc",
+  "version": "1.2.0",
+  "description": "Guides Claude through the problem → design → plan → close feature lifecycle, with Opus reviewer agents vetting each doc",
   "author": {
     "name": "Brent Hoover",
     "email": "brent@thebuddhalodge.com"
