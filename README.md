@@ -7,7 +7,7 @@ organized into plugins that are enabled per machine.
 
 | Plugin | Enabled on | Contents |
 |--------|-----------|----------|
-| `core` | all machines | `explain-code`, `conventional-commit`, `codebase-visualizer`, `code-quality`, `git-master`, `vue-typescript` |
+| `core` | all machines | `explain-code`, `conventional-commit`, `codebase-visualizer`, `code-quality`, `git-master`, `git-worktrees`, `vue-typescript` |
 | `go` | all machines | `go-backend-workflow`, `go-concurrency-patterns`, `go-error-handling`, `go-interfaces` |
 | `devops` | work machines only | `helm-debugging`, `helm-values-management`, `k8s-manifest-generator`, `k8s-security-policies` |
 | `doc-driven-development` | all machines | `start-feature` — `problem → design → plan` documentation workflow (`/start-feature [slug]`) |
