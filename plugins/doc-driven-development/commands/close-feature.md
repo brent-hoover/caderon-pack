@@ -14,12 +14,10 @@ Two-phase wrap-up: REVISIT DEFERRED → COMPLETE → archive. Pairs with `/start
 **1. Find the feature.**
 
 If a slug argument was passed (`/close-feature my-feature`), use it. Otherwise detect the doc root by
-reading the project `CLAUDE.md`: if it mentions `feature-work/` the root is `feature-work/`,
-otherwise `docs/`. List the in-progress feature dirs (those with a `plan.md` and **no**
-`completed.md`, excluding `archived/`). If exactly one, use it; if several, ask which; if none, say
+reading the project `CLAUDE.md`: If the feature-work directory does not exists, create it. List the in-progress feature dirs (those with a `plan.md` and **no**`completed.md`, excluding `archived/`). If exactly one, use it; if several, ask which; if none, say
 so and stop.
 
-Announce: `Closing <doc-root>/<slug>/`
+Announce: `Closing feature-work/<slug>/`
 
 **2. Get metadata:**
 
