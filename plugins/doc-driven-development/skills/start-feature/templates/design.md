@@ -31,20 +31,29 @@ expensive later, so pin them down now.>
 
 ## Alternatives considered
 
-<What else did we look at, and why did we not choose it? One paragraph per alternative,
-including the chosen one.>
+<Three solutions across the effort/investment spectrum, so the trade-off is explicit. If two of
+them genuinely coincide, say so rather than inventing a difference.>
 
-### <Alternative 1>
+### Simplest
 
-<What it was, why we rejected it.>
+<The dumbest thing that technically works — least mechanism, fewest moving parts, fastest to ship.
+State its **drawbacks honestly**: limitations, tech debt incurred, what it punts on.>
 
-### <Alternative 2>
+### Complete
 
-<What it was, why we rejected it.>
+<The solution we'd be comfortable owning long-term: handles the relevant complexity drivers
+properly and adds no notable tech debt, while staying within realistic time/cost.>
 
-### Chosen: <the chosen approach>
+### Optimal
 
-<Why this one won.>
+<How we'd solve it with no time or cost constraints — the ideal. Names what we trade away by not
+doing this now; doubles as future direction.>
+
+### Decision
+
+<Which solution (or a hybrid) we're choosing, and where it lands on the spectrum. Justify both
+directions: which complexity drivers push us above Simplest, and which constraints keep us below
+Optimal.>
 
 ## Risks
 

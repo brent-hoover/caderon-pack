@@ -1,7 +1,7 @@
 {
   "name": "doc-driven-development",
-  "version": "1.0.0",
-  "description": "Guides Claude through problem → design → plan documentation workflow for new features",
+  "version": "1.1.0",
+  "description": "Guides Claude through problem → design → plan documentation workflow for new features, with an Opus reviewer agent vetting each doc",
   "author": {
     "name": "Brent Hoover",
     "email": "brent@thebuddhalodge.com"
@@ -9,5 +9,11 @@
   "homepage": "https://github.com/brent-hoover/caderon-pack",
   "repository": "https://github.com/brent-hoover/caderon-pack",
   "license": "MIT",
-  "keywords": ["workflow", "documentation", "feature-docs", "start-feature", "problem-design-plan"]
+  "keywords": [
+    "workflow",
+    "documentation",
+    "feature-docs",
+    "start-feature",
+    "problem-design-plan"
+  ]
 }

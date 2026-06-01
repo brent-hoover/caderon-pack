@@ -16,25 +16,21 @@ paragraphs. Orient someone who's never seen this problem before.>
 
 ## Problem
 
-<What specifically is wrong, missing, or needed? Be concrete. Avoid proposing solutions here —
-that's the design doc's job.>
+<What specifically is wrong, missing, or needed? Be concrete. Keep solutions out entirely — no
+"we should…", no "simplest approach". That's the design doc's job. State only what's true today and
+what's required.>
 
-## Simplest possible solution
+## Complexity drivers
 
-<Before considering complications, what's the most obvious, dumbest thing that would solve the
-problem as stated? Not the elegant answer; the *simplest* answer. This section exists to catch
-over-engineering at the source.>
+<What about this problem makes it non-trivial? State each as a **fact about the problem or a hard
+requirement** — never as a solution. The design doc uses these to decide how far beyond the
+simplest solution to go; here we only record what's true. Mark non-applicable ones "N/A — <why>" rather than skipping —
+silence is indistinguishable from "we didn't think about it.">
 
-## Complications considered
-
-<For each complication, state: does it actually apply, and if so, what does it force? Mark
-non-applicable ones "N/A: <why>" rather than skipping — silence is indistinguishable from
-"we didn't think about it.">
-
-- **Scale**: <grows non-linearly with users, data volume, or load? If not: "N/A — bounded by <thing>".>
-- **Concurrency**: <multiple writers or race conditions? If not: "N/A — single-writer / serialized".>
-- **Failure modes**: <what breaks if the simplest solution fails? If trivially handled: "N/A — fail-loud".>
-- **Cross-cutting policies**: <PII, auth, secrets, audit, observability? If none: "N/A — touches none".>
+- **Scale**: <does it grow non-linearly with users, data volume, or load? If not: "N/A — bounded by <thing>".>
+- **Concurrency**: <are multiple writers or race conditions inherent to the problem? If not: "N/A — single-writer / serialized".>
+- **Failure modes**: <what is the real-world consequence if this goes wrong? If minimal: "N/A — fail-loud, no data loss".>
+- **Cross-cutting policies**: <does the data/context involve PII, auth, secrets, audit, observability obligations? If none: "N/A — touches none".>
 
 ## Constraints
 
