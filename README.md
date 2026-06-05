@@ -66,6 +66,10 @@ Claude-specific `commands/` and `agents/` are not exposed through the Codex plug
 The older `scripts/sync-codex-skills.py` path is still available if you want to copy skills
 directly into `~/.codex/skills/` from Claude's installed plugin cache.
 
+Plugin metadata is kept in sync by the `Sync plugin metadata` GitHub Action. Edits to shared
+fields in either `.claude-plugin/plugin.json` or `.codex-plugin/plugin.json` are copied to the
+other side; conflicting edits to the same field fail the workflow instead of overwriting.
+
 Other agents (Gemini, Cursor, OpenCode) use different conventions and are not synced.
 
 ## Doc conventions (doc-driven-development)

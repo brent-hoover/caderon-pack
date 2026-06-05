@@ -1,0 +1,58 @@
+name: Sync plugin metadata
+
+on:
+  push:
+    paths:
+      - ".agents/plugins/**"
+      - ".claude-plugin/**"
+      - ".github/workflows/sync-plugin-metadata.yml"
+      - "plugins/**/.claude-plugin/**"
+      - "plugins/**/.codex-plugin/**"
+      - "plugins/**/skills/**"
+      - "scripts/sync-plugin-metadata.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-plugin-metadata-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve base ref
+        id: base
+        shell: bash
+        run: |
+          base_ref="${{ github.event.before }}"
+          if [[ -z "$base_ref" || "$base_ref" =~ ^0+$ ]]; then
+            base_ref="$(git rev-list --max-parents=0 HEAD)"
+          fi
+          echo "base_ref=$base_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Sync plugin metadata
+        run: python3 scripts/sync-plugin-metadata.py --base-ref "${{ steps.base.outputs.base_ref }}"
+
+      - name: Check plugin metadata
+        run: python3 scripts/sync-plugin-metadata.py --check --base-ref "${{ steps.base.outputs.base_ref }}"
+
+      - name: Commit generated metadata
+        shell: bash
+        run: |
+          git add .agents/plugins/marketplace.json .claude-plugin/marketplace.json plugins
+          if git diff --cached --quiet; then
+            echo "No metadata changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: sync plugin metadata"
+          git push
