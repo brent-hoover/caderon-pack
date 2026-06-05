@@ -1,0 +1,38 @@
+{
+  "name": "devops",
+  "version": "1.1.0",
+  "description": "Kubernetes, Helm, and Terraform skills: manifest generation, security policies, Helm debugging, values management, and Terraform/OpenTofu modules, testing, and CI/CD",
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": [
+    "kubernetes",
+    "k8s",
+    "helm",
+    "terraform",
+    "opentofu",
+    "devops",
+    "manifests"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "DevOps",
+    "shortDescription": "Kubernetes, Helm, and Terraform workflow skills.",
+    "longDescription": "DevOps packages Brent's Kubernetes, Helm, and Terraform skills for Codex, including manifest generation, security policy design, Helm debugging, values management, and infrastructure-as-code workflows.",
+    "developerName": "Brent Hoover",
+    "category": "DevOps",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Debug this Helm chart failure.",
+      "Review this Kubernetes manifest.",
+      "Help me design this Terraform module."
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "doc-driven-development",
+  "version": "1.2.0",
+  "description": "Guides Claude through the problem -> design -> plan -> close feature lifecycle, with Opus reviewer agents vetting each doc",
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "documentation",
+    "feature-docs",
+    "start-feature",
+    "problem-design-plan"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Doc Driven Development",
+    "shortDescription": "Feature documentation lifecycle skills.",
+    "longDescription": "Doc Driven Development packages Brent's problem, design, plan, and close-feature documentation lifecycle skills for Codex.",
+    "developerName": "Brent Hoover",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Start feature docs for this work.",
+      "Close out this completed feature.",
+      "Review this feature plan."
+    ]
+  }
+}
