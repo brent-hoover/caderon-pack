@@ -28,13 +28,15 @@ Before entering any phase:
 Check if an argument was passed (e.g., `/start-feature my-feature`). If yes, use it. If not,
 ask: "What's the feature slug? Use kebab-case — e.g. `user-auth`, `billing-export`."
 
-**2 Start a worktree
+
+STOP: DO NOT GO ANY FARTHER. DO NOT PROCEED TO THE NEXT PHASE UNTIL THIS ONE IS COMPLETED.
+**2. Start a worktree**
 
 Before starting on any new code, create a new git worktree with the feature slug using the git-worktrees skill.
 
-**3. Confirm or create the doc root
+**3. Confirm or create the doc root**
 
-The doc route should be $PROJECT_ROOT/feature-work/
+The doc route should be $PROJECT_ROOT/feature-work/. DO NOT WRITE TO superpower, .claude or any other directory
 
 If that directory does not exist, create it
 ALL FEATURE WORK DOCS NEED TO GO IN THE $DOC_ROOT
@@ -88,7 +90,7 @@ The **review step** referenced in each phase below means:
 
 Announce: **[PHASE: PROBLEM]**
 
-If start-feature was launched after a discussion of the problem, then use that to full out the problem
+If start-feature was launched after a discussion of the problem, then use that to fill out the problem
 template yourself. If not then do these steps
 
 Ask these questions **one at a time**. Wait for the complete answer before asking the next.
