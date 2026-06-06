@@ -37,13 +37,17 @@ jobs:
           fi
           echo "base_ref=$base_ref" >> "$GITHUB_OUTPUT"
 
-      - name: Sync plugin metadata
-        run: python3 scripts/sync-plugin-metadata.py --base-ref "${{ steps.base.outputs.base_ref }}"
-
       - name: Check plugin metadata
+        id: check
+        continue-on-error: true
         run: python3 scripts/sync-plugin-metadata.py --check --base-ref "${{ steps.base.outputs.base_ref }}"
 
+      - name: Sync plugin metadata
+        if: ${{ steps.check.outcome == 'failure' && github.event.repository.fork == false }}
+        run: python3 scripts/sync-plugin-metadata.py --base-ref "${{ steps.base.outputs.base_ref }}"
+
       - name: Commit generated metadata
+        if: ${{ steps.check.outcome == 'failure' && github.event.repository.fork == false }}
         shell: bash
         run: |
           git add .agents/plugins/marketplace.json .claude-plugin/marketplace.json plugins
@@ -56,3 +60,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore: sync plugin metadata"
           git push
+
+      - name: Fail if metadata out of sync
+        if: ${{ steps.check.outcome == 'failure' && github.event.repository.fork == true }}
+        run: |
+          echo "Metadata is out of sync; please run scripts/sync-plugin-metadata.py and commit the results." >&2
+          exit 1
