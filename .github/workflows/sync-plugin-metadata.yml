@@ -37,30 +37,17 @@ jobs:
           fi
           echo "base_ref=$base_ref" >> "$GITHUB_OUTPUT"
 
-      - name: Choose sync mode
-        id: mode
-        shell: bash
-        run: |
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_protected }}" != "true" ]]; then
-            echo "write=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "write=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Sync plugin metadata
-        shell: bash
-        run: |
-          if [[ "${{ steps.mode.outputs.write }}" == "true" ]]; then
-            python3 scripts/sync-plugin-metadata.py --base-ref "${{ steps.base.outputs.base_ref }}"
-          else
-            python3 scripts/sync-plugin-metadata.py --check --base-ref "${{ steps.base.outputs.base_ref }}"
-          fi
-
       - name: Check plugin metadata
+        id: check
+        continue-on-error: true
         run: python3 scripts/sync-plugin-metadata.py --check --base-ref "${{ steps.base.outputs.base_ref }}"
 
+      - name: Sync plugin metadata
+        if: ${{ steps.check.outcome == 'failure' && github.event.repository.fork == false && github.ref_protected == false }}
+        run: python3 scripts/sync-plugin-metadata.py --base-ref "${{ steps.base.outputs.base_ref }}"
+
       - name: Commit generated metadata
-        if: steps.mode.outputs.write == 'true'
+        if: ${{ steps.check.outcome == 'failure' && github.event.repository.fork == false && github.ref_protected == false }}
         shell: bash
         run: |
           git add .agents/plugins/marketplace.json .claude-plugin/marketplace.json plugins
@@ -74,7 +61,15 @@ jobs:
           git commit -m "chore: sync plugin metadata"
           git push
 
+      - name: Fail if metadata cannot be auto-committed
+        if: ${{ steps.check.outcome == 'failure' && (github.event.repository.fork == true || github.ref_protected == true) }}
+        run: |
+          echo "Metadata is out of sync and this ref cannot be auto-committed."
+          echo "Run scripts/sync-plugin-metadata.py locally and commit the result."
+          exit 1
+
       - name: Check no uncommitted metadata remains
+        if: ${{ steps.check.outcome == 'failure' && github.event.repository.fork == false && github.ref_protected == false }}
         shell: bash
         run: |
           if git diff --quiet && git diff --cached --quiet; then
