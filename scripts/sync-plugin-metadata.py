@@ -85,7 +85,10 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 def get_field(payload: dict[str, Any] | None, field: str) -> Any:
     if payload is None:
         return MISSING
-    return copy.deepcopy(payload.get(field, MISSING))
+    value = payload.get(field, MISSING)
+    if value is MISSING:
+        return MISSING
+    return copy.deepcopy(value)
 
 
 def format_value(value: Any) -> str:
@@ -107,13 +110,31 @@ def resolve_value(
 ) -> Any:
     if left_value == right_value:
         return left_value
-    if left_value is MISSING and right_value is not MISSING:
-        return copy.deepcopy(right_value)
-    if right_value is MISSING and left_value is not MISSING:
-        return copy.deepcopy(left_value)
 
     left_changed = left_value != base_left_value
     right_changed = right_value != base_right_value
+    if left_value is MISSING and right_value is not MISSING:
+        if left_changed and right_changed:
+            conflicts.append(
+                f"{label}: {left_name} deleted while {right_name} changed "
+                f"({format_value(base_left_value)} -> <missing>, "
+                f"{format_value(base_right_value)} -> {format_value(right_value)})"
+            )
+            return copy.deepcopy(right_value)
+        if left_changed:
+            return MISSING
+        return copy.deepcopy(right_value)
+    if right_value is MISSING and left_value is not MISSING:
+        if left_changed and right_changed:
+            conflicts.append(
+                f"{label}: {right_name} deleted while {left_name} changed "
+                f"({format_value(base_right_value)} -> <missing>, "
+                f"{format_value(base_left_value)} -> {format_value(left_value)})"
+            )
+            return copy.deepcopy(left_value)
+        if right_changed:
+            return MISSING
+        return copy.deepcopy(left_value)
     if left_changed and right_changed:
         conflicts.append(
             f"{label}: both {left_name} and {right_name} changed differently "
@@ -219,10 +240,13 @@ def sync_plugin_manifest(
         if value is not MISSING:
             claude_out[field] = copy.deepcopy(value)
             codex_out[field] = copy.deepcopy(value)
+        else:
+            claude_out.pop(field, None)
+            codex_out.pop(field, None)
 
     claude_out.setdefault("name", plugin_name)
     codex_out.setdefault("name", plugin_name)
-    codex_out["skills"] = "./skills/"
+    codex_out.setdefault("skills", "./skills/")
     ensure_codex_interface(codex_out, plugin_name)
 
     desired: dict[Path, dict[str, Any]] = {
