@@ -36,15 +36,6 @@ silence is indistinguishable from "we didn't think about it.">
 
 <What are we operating under that constrains any solution?>
 
--
--
-
-## Requirements
-
-<The "must be true" statements. Prefer observable, checkable statements.>
-
--
--
 
 ## Non-goals
 
