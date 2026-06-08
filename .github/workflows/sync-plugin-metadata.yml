@@ -1,0 +1,79 @@
+name: Sync plugin metadata
+
+on:
+  push:
+    paths:
+      - ".agents/plugins/**"
+      - ".claude-plugin/**"
+      - ".github/workflows/sync-plugin-metadata.yml"
+      - "plugins/**/.claude-plugin/**"
+      - "plugins/**/.codex-plugin/**"
+      - "plugins/**/skills/**"
+      - "scripts/sync-plugin-metadata.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-plugin-metadata-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve base ref
+        id: base
+        shell: bash
+        run: |
+          base_ref="${{ github.event.before }}"
+          if [[ -z "$base_ref" || "$base_ref" =~ ^0+$ ]]; then
+            base_ref="$(git rev-list --max-parents=0 HEAD)"
+          fi
+          echo "base_ref=$base_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Check plugin metadata
+        id: check
+        continue-on-error: true
+        run: python3 scripts/sync-plugin-metadata.py --check --base-ref "${{ steps.base.outputs.base_ref }}"
+
+      - name: Sync plugin metadata
+        if: ${{ steps.check.outcome == 'failure' && github.event.repository.fork == false && github.ref_protected == false }}
+        run: python3 scripts/sync-plugin-metadata.py --base-ref "${{ steps.base.outputs.base_ref }}"
+
+      - name: Commit generated metadata
+        if: ${{ steps.check.outcome == 'failure' && github.event.repository.fork == false && github.ref_protected == false }}
+        shell: bash
+        run: |
+          git add .agents/plugins/marketplace.json .claude-plugin/marketplace.json plugins
+          if git diff --cached --quiet; then
+            echo "No metadata changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: sync plugin metadata"
+          git push
+
+      - name: Fail if metadata cannot be auto-committed
+        if: ${{ steps.check.outcome == 'failure' && (github.event.repository.fork == true || github.ref_protected == true) }}
+        run: |
+          echo "Metadata is out of sync and this ref cannot be auto-committed."
+          echo "Run scripts/sync-plugin-metadata.py locally and commit the result."
+          exit 1
+
+      - name: Check no uncommitted metadata remains
+        if: ${{ steps.check.outcome == 'failure' && github.event.repository.fork == false && github.ref_protected == false }}
+        shell: bash
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            exit 0
+          fi
+          echo "::error::Plugin metadata is out of sync and could not be auto-committed. Run scripts/sync-plugin-metadata.py locally and push the result."
+          exit 1

@@ -1,0 +1,56 @@
+{
+  "name": "caderon-pack",
+  "interface": {
+    "displayName": "Caderon Pack"
+  },
+  "plugins": [
+    {
+      "name": "doc-driven-development",
+      "source": {
+        "source": "local",
+        "path": "./plugins/doc-driven-development"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "core",
+      "source": {
+        "source": "local",
+        "path": "./plugins/core"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "go",
+      "source": {
+        "source": "local",
+        "path": "./plugins/go"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Development"
+    },
+    {
+      "name": "devops",
+      "source": {
+        "source": "local",
+        "path": "./plugins/devops"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "DevOps"
+    }
+  ]
+}

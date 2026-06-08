@@ -52,19 +52,24 @@ plugin's version, push, then `claude plugin marketplace update caderon-pack`.
 
 ## Codex
 
-Codex shares the Agent Skills (`SKILL.md`) format but doesn't read Claude's plugin
-marketplace. `scripts/sync-codex-skills.py` copies the skills from whichever caderon-pack
-plugins are **enabled on this machine** (read from `~/.claude/settings.json`) into
-`~/.codex/skills/`, using the newest installed version of each from Claude's plugin cache:
+Codex can install the same Agent Skills (`SKILL.md`) from the repo-local Codex marketplace
+at `.agents/plugins/marketplace.json`. From a local checkout:
 
 ```bash
-./scripts/sync-codex-skills.py            # or --dry-run to preview
+codex plugin marketplace add /path/to/caderon-pack
+codex plugin add core@caderon-pack go@caderon-pack doc-driven-development@caderon-pack
 ```
 
-It's idempotent and only manages skills it installed (marked with a `.caderon-synced` file) —
-it never touches roborev's skills (roborev installs those to `~/.codex/skills/` itself) or
-Codex internals. Re-run it after `claude plugin update` to refresh Codex. It respects the
-machine profile automatically (e.g. `devops` skills sync only on work machines).
+Install `devops@caderon-pack` on work machines. Codex packages the `skills/` directories;
+Claude-specific `commands/` and `agents/` are not exposed through the Codex plugin metadata.
+
+The older `scripts/sync-codex-skills.py` path is still available if you want to copy skills
+directly into `~/.codex/skills/` from Claude's installed plugin cache.
+
+Plugin metadata is kept in sync by the `Sync plugin metadata` GitHub Action. Edits to shared
+fields in either `plugins/<plugin>/.claude-plugin/plugin.json` or
+`plugins/<plugin>/.codex-plugin/plugin.json` are copied to the other side; conflicting edits to
+the same field fail the workflow instead of overwriting.
 
 Other agents (Gemini, Cursor, OpenCode) use different conventions and are not synced.
 

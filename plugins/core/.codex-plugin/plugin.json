@@ -1,0 +1,36 @@
+{
+  "name": "core",
+  "version": "1.2.0",
+  "description": "Brent's always-on skills: code explanation, conventional commits, codebase visualization, code quality, git, git worktrees, and Vue/TypeScript frontend work",
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": [
+    "code-review",
+    "git",
+    "conventional-commit",
+    "vue",
+    "typescript"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Core",
+    "shortDescription": "Always-on coding, git, quality, and Vue/TypeScript skills.",
+    "longDescription": "Core packages Brent's always-on coding workflow skills for Codex, including code explanation, conventional commits, codebase visualization, code quality, git workflows, worktrees, and Vue/TypeScript frontend work.",
+    "developerName": "Brent Hoover",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Review this code for quality issues.",
+      "Create a conventional commit for my changes.",
+      "Help me work with this git branch."
+    ]
+  }
+}
