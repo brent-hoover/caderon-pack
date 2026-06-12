@@ -16,6 +16,18 @@ setup() {
   [[ "$output" == *"unknown source"* ]]
 }
 
+@test "option-like github ref is rejected" {
+  run bash "$SCRIPT" show github -rf
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid github ref"* ]]
+}
+
+@test "malformed jig ref is rejected" {
+  run bash "$SCRIPT" show jig "; rm -rf /"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"invalid jig ref"* ]]
+}
+
 @test "show github calls gh issue view with json fields" {
   stubdir="$(mktemp -d)"
   cat >"$stubdir/gh" <<'STUB'

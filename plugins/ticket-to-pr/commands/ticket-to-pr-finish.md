@@ -21,8 +21,9 @@ Post-merge wrap-up for ticket `$ARGUMENTS`. Run ONLY after the user confirms the
    default=$(git symbolic-ref --short refs/remotes/origin/HEAD | sed 's@^origin/@@')
    repo_root=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
    ```
-3. **Update the default branch.** Check out `$default` in the main checkout and `git pull` so the
-   merged change is present.
+3. **Update the default branch.** Run all git operations against the main checkout with
+   `git -C "$repo_root" ...` (you may be running from inside the feature worktree). Check out `$default`
+   and pull: `git -C "$repo_root" checkout "$default" && git -C "$repo_root" pull`.
 4. **Get the merged diff** for `doc-writer`:
    ```bash
    gh pr diff "$NUMBER"                      # or, if the branch ref still exists locally:
@@ -35,8 +36,8 @@ Post-merge wrap-up for ticket `$ARGUMENTS`. Run ONLY after the user confirms the
    the directory after the branch with `/` replaced by `-` (`feat/<slug>` → `.worktrees/feat-<slug>`)
    under the repo root, so resolve the path from `$repo_root` + `$BRANCH` (not the current directory):
    ```bash
-   git worktree remove "$repo_root/.worktrees/${BRANCH//\//-}"   # add --force only after confirming no wanted changes
-   git branch -d "$BRANCH"
+   git -C "$repo_root" worktree remove "$repo_root/.worktrees/${BRANCH//\//-}"   # --force only after confirming no wanted changes
+   git -C "$repo_root" branch -d "$BRANCH"
    ```
    If `git worktree remove` reports uncommitted changes, STOP and confirm with the user before using
    `--force`. `git branch -d` will fail when the PR was squash- or rebase-merged (the local branch is

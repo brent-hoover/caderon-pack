@@ -21,8 +21,11 @@ main() {
   [ "$#" -ge 3 ] || usage
   local cmd="$1" src="$2" ref="$3"
   case "$src" in
-    github|jig) ;;
-    *) echo "unknown source: $src" >&2; exit 2 ;;
+    github) [[ "$ref" =~ ^[0-9]+$ ]] \
+              || { echo "invalid github ref: $ref (expected an issue number)" >&2; exit 2; } ;;
+    jig)    [[ "$ref" =~ ^jig-[0-9]+$ || "$ref" =~ ^[0-9a-fA-F-]{8,}$ ]] \
+              || { echo "invalid jig ref: $ref (expected jig-N or a UUID)" >&2; exit 2; } ;;
+    *)      echo "unknown source: $src" >&2; exit 2 ;;
   esac
   case "$cmd" in
     show)    "show_${src}" "$ref" ;;
