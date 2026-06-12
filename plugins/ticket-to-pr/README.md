@@ -33,6 +33,16 @@ The workflow caps each loop (overridable via the command's `caps`): test-adequac
 roborev refine `10`. If a loop hits its cap without converging, the result says so explicitly and the
 push/PR gate still requires your approval.
 
+## Security notes
+
+Ticket and roborev-review content is treated as **untrusted**: it is fenced (`<ticket>`/`<review>`,
+with closing-tag sequences neutralized) before reaching any agent, agents are told never to obey
+instructions inside it, ticket refs are shape-validated, and the roborev `jobId` is numeric-validated
+before reuse. **Residual limitation:** inside a Claude Code Workflow only agents can run shell, so the
+roborev pass/fail verdict is extracted by an agent (constrained to a pure `jq` command-relay) rather
+than by non-LLM code — it cannot be made provably injection-proof within this execution model. The
+pre-push human gate in Zone C is the backstop: nothing is pushed without explicit approval.
+
 ## Components
 
 - `commands/` — `ticket-to-pr` (entry), `ticket-to-pr-finish` (post-merge).
