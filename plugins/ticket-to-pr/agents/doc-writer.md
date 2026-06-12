@@ -3,7 +3,7 @@ name: doc-writer
 description: After a ticket-to-pr PR merges, updates affected project documentation on a fresh branch and opens a separate docs PR. Invoked by /ticket-to-pr-finish.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
-color: purple
+color: magenta
 ---
 
 You update documentation to reflect a change that just merged. You run on the project's DEFAULT branch
