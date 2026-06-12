@@ -28,12 +28,30 @@ const DEV_RESULT = {
   },
   required: ['testsPassing', 'buildClean', 'diffSummary', 'acMet'],
 }
+const VERDICT = {
+  type: 'object',
+  properties: { satisfied: { type: 'boolean' }, gaps: { type: 'array', items: { type: 'string' } } },
+  required: ['satisfied', 'gaps'],
+}
 
 phase('Tests')
-const tests = await agent(
+let tests = await agent(
   `${WT}Write failing tests for this ticket.\n\nTITLE: ${ticket.title}\n\nBODY:\n${ticket.body}\n\n` +
   `ACCEPTANCE CRITERIA:\n${ac}\n\nTest command: ${verifyCmds.test}`,
   { agentType: 'test-writer', schema: TEST_FILES })
+
+let verdict = null
+for (let i = 0; i < (caps?.test ?? 3); i++) {
+  verdict = await agent(
+    `${WT}Review these tests for coverage of the acceptance criteria.\n\nACCEPTANCE CRITERIA:\n${ac}` +
+    `\n\nTest files: ${(tests?.files ?? []).join(', ')}\n\nTest command: ${verifyCmds.test}`,
+    { agentType: 'test-adequacy-reviewer', schema: VERDICT })
+  if (verdict?.satisfied) break
+  tests = await agent(
+    `${WT}Revise the tests to close these gaps:\n${(verdict?.gaps ?? []).map(g => `- ${g}`).join('\n')}` +
+    `\n\nACCEPTANCE CRITERIA:\n${ac}\n\nTest command: ${verifyCmds.test}`,
+    { agentType: 'test-writer', schema: TEST_FILES })
+}
 
 phase('Dev')
 let dev = null
@@ -54,5 +72,6 @@ const commitInfo = await agent(
 return {
   testFiles: tests?.files ?? [], diffSummary: dev?.diffSummary ?? '',
   acMet: dev?.acMet ?? [], testsPassing: !!dev?.testsPassing, buildClean: !!dev?.buildClean,
+  adequacyVerdict: verdict?.satisfied ? 'satisfied' : 'cap-reached',
   commitInfo,
 }
