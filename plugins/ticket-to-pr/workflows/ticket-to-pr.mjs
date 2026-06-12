@@ -23,11 +23,12 @@ const TEST_FILES = {
 const DEV_RESULT = {
   type: 'object',
   properties: {
-    testsPassing: { type: 'boolean' }, buildClean: { type: 'boolean' },
+    testsPassing: { type: 'boolean' }, buildClean: { type: 'boolean' }, lintClean: { type: 'boolean' },
     diffSummary: { type: 'string' }, acMet: { type: 'array', items: { type: 'string' } },
   },
-  required: ['testsPassing', 'buildClean', 'diffSummary', 'acMet'],
+  required: ['testsPassing', 'buildClean', 'lintClean', 'diffSummary', 'acMet'],
 }
+const green = (d) => !!(d?.testsPassing && d?.buildClean && d?.lintClean)
 const VERDICT = {
   type: 'object',
   properties: { satisfied: { type: 'boolean' }, gaps: { type: 'array', items: { type: 'string' } } },
@@ -65,9 +66,21 @@ let dev = null
 for (let j = 0; j < (caps?.dev ?? 3); j++) {
   dev = await agent(
     `${WT}IMPLEMENT mode.\n\nACCEPTANCE CRITERIA:\n${ac}\n\nTests already written: ` +
-    `${(tests?.files ?? []).join(', ')}\n\nBuild: ${verifyCmds.build}\nTest: ${verifyCmds.test}`,
+    `${(tests?.files ?? []).join(', ')}\n\nBuild: ${verifyCmds.build}\nLint: ${verifyCmds.lint}\n` +
+    `Test: ${verifyCmds.test}\n\nAll three (build, lint, test) must be clean.`,
     { agentType: 'dev', schema: DEV_RESULT })
-  if (dev?.testsPassing && dev?.buildClean) break
+  if (green(dev)) break
+}
+
+// Do not commit or review a branch that never reached green — report and stop (Zone C surfaces it).
+if (!green(dev)) {
+  return {
+    testFiles: tests?.files ?? [], diffSummary: dev?.diffSummary ?? '',
+    acMet: dev?.acMet ?? [], testsPassing: !!dev?.testsPassing, buildClean: !!dev?.buildClean,
+    lintClean: !!dev?.lintClean,
+    adequacyVerdict: verdict?.satisfied ? 'satisfied' : 'cap-reached',
+    roborevVerdict: 'skipped', status: 'dev-cap-reached', commitInfo: null,
+  }
 }
 
 phase('Refine')
@@ -89,10 +102,11 @@ for (let k = 0; k < (caps?.refine ?? 10); k++) {
     `Return passed, jobId (as string), and reviewText. Do NOT fix anything.`,
     { agentType: 'dev', schema: REVIEW })
   if (review?.passed) { refinePass = true; break }
-  await agent(
+  const fixResult = await agent(
     `${WT}FIX mode. Address the findings in this roborev review, highest severity first:\n\n` +
     review.reviewText +
-    `\n\nAfter fixing, run ${verifyCmds.test} (keep green), then commit (conventional). ` +
+    `\n\nAfter fixing, run ${verifyCmds.build}, ${verifyCmds.lint}, and ${verifyCmds.test} ` +
+    `(all must stay clean), then commit (conventional). ` +
     `Then comment a concise summary on the review and close it. Pass the comment via a heredoc ` +
     `(never interpolate review text into the shell):\n` +
     `  roborev comment --commenter ticket-to-pr --job ${review.jobId} -m "$(cat <<'TTP_C'\n` +
@@ -101,12 +115,15 @@ for (let k = 0; k < (caps?.refine ?? 10); k++) {
     `(Confirm the exact comment flag with \`roborev comment --help\`; the refine skill uses -m.) ` +
     `If a commit-scoped hook review appears (roborev wait), close it too.`,
     { agentType: 'dev', schema: DEV_RESULT })
+  if (fixResult) dev = fixResult   // returned state must reflect post-fix code, not pre-roborev
 }
 
 return {
   testFiles: tests?.files ?? [], diffSummary: dev?.diffSummary ?? '',
   acMet: dev?.acMet ?? [], testsPassing: !!dev?.testsPassing, buildClean: !!dev?.buildClean,
+  lintClean: !!dev?.lintClean,
   adequacyVerdict: verdict?.satisfied ? 'satisfied' : 'cap-reached',
   roborevVerdict: refinePass ? 'pass' : 'cap-reached',
+  status: refinePass ? 'ok' : 'roborev-cap-reached',
   commitInfo,
 }

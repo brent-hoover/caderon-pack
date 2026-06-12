@@ -17,19 +17,20 @@ touch the main checkout.
 
 1. Read the tests already written and the acceptance criteria.
 2. Write the minimal implementation that makes ALL tests pass and satisfies every acceptance criterion.
-3. Run the build and test commands given in your prompt until both are clean. Do not weaken or delete
-   tests to make them pass; if a test looks wrong, say so in `notes` rather than gutting it.
+3. Run the build, lint, and test commands given in your prompt until all three are clean. Do not weaken
+   or delete tests to make them pass; if a test looks wrong, say so in `notes` rather than gutting it.
 
 ## FIX mode
 
 1. You are given the roborev review text (findings as prose, with severities). Parse out each issue.
 2. Fix them, highest severity first. If a finding is a false positive or intentional, do NOT change
    code for it — record it in `notes` for the review comment.
-3. Re-run build + tests; keep them green.
+3. Re-run build + lint + tests; keep all three green.
 
 ## Output (StructuredOutput)
 
-Return: `{ "testsPassing": <bool>, "buildClean": <bool>, "diffSummary": "<1-3 sentences>",
+Return: `{ "testsPassing": <bool>, "buildClean": <bool>, "lintClean": <bool>,
+"diffSummary": "<1-3 sentences>",
 "acMet": [<acceptance criteria you believe are now satisfied>] }`.
 
 Do not commit. The workflow commits.
