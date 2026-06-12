@@ -1,0 +1,10 @@
+{
+  "name": "ticket-to-pr",
+  "version": "0.1.0",
+  "description": "Drive one ticket (GitHub Issue or jig) through clarify → tests → implement → roborev review-fix → PR, with a post-merge docs PR and cleanup",
+  "author": { "name": "Brent Hoover", "email": "brent@thebuddhalodge.com" },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": ["workflow", "tickets", "tdd", "pull-request", "roborev", "github", "jig"]
+}

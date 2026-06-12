@@ -31,6 +31,12 @@
       "description": "Kubernetes and Helm skills: manifest generation, security policies, Helm debugging, values management",
       "source": "./plugins/devops",
       "category": "devops"
+    },
+    {
+      "name": "ticket-to-pr",
+      "description": "Ticket → PR execution workflow: clarify, test, implement, review-fix, PR, docs",
+      "source": "./plugins/ticket-to-pr",
+      "category": "workflow"
     }
   ]
 }
