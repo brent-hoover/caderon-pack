@@ -124,6 +124,8 @@ return {
   lintClean: !!dev?.lintClean,
   adequacyVerdict: verdict?.satisfied ? 'satisfied' : 'cap-reached',
   roborevVerdict: refinePass ? 'pass' : 'cap-reached',
-  status: refinePass ? 'ok' : 'roborev-cap-reached',
+  // 'ok' requires BOTH a passing roborev verdict and a green tree — a roborev pass alone can hide a
+  // fix that left build/lint/test red.
+  status: refinePass ? (green(dev) ? 'ok' : 'verification-red') : 'roborev-cap-reached',
   commitInfo,
 }
