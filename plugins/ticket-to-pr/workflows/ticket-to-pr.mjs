@@ -128,14 +128,20 @@ for (let k = 0; k < refineCap; k++) {
   }
 }
 
+// 'ok' requires ALL of: adequacy converged, roborev passed, and a green tree. Any single failure
+// yields a distinct non-ok status so Zone C never auto-offers push/PR on incomplete work.
+let status
+if (verdict?.satisfied && refinePass && green(dev)) status = 'ok'
+else if (!green(dev)) status = 'verification-red'
+else if (!verdict?.satisfied) status = 'test-adequacy-cap-reached'
+else status = 'roborev-cap-reached'
+
 return {
   testFiles: tests?.files ?? [], diffSummary: dev?.diffSummary ?? '',
   acMet: dev?.acMet ?? [], testsPassing: !!dev?.testsPassing, buildClean: !!dev?.buildClean,
   lintClean: !!dev?.lintClean,
   adequacyVerdict: verdict?.satisfied ? 'satisfied' : 'cap-reached',
   roborevVerdict: refinePass ? 'pass' : 'cap-reached',
-  // 'ok' requires BOTH a passing roborev verdict and a green tree — a roborev pass alone can hide a
-  // fix that left build/lint/test red.
-  status: refinePass ? (green(dev) ? 'ok' : 'verification-red') : 'roborev-cap-reached',
+  status,
   commitInfo,
 }
