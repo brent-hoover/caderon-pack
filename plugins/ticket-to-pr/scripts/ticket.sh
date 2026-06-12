@@ -12,6 +12,11 @@ EOF
   exit 2
 }
 
+show_github()    { gh issue view "$1" --json title,body,comments; }
+comment_github() { gh issue comment "$1" --body-file -; }
+show_jig()       { jig issue show "$1"; }
+comment_jig()    { jig issue comment "$1" --body-file -; }
+
 main() {
   [ "$#" -ge 3 ] || usage
   local cmd="$1" src="$2" ref="$3"
