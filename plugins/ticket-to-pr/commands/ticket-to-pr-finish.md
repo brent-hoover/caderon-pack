@@ -14,10 +14,12 @@ Post-merge wrap-up for ticket `$ARGUMENTS`. Run ONLY after the user confirms the
    ```bash
    gh pr list --state merged --search "<ticket ref or title keywords>" --json number,headRefName,mergedAt,title
    ```
-   Require **exactly one** match whose title/body clearly references this ticket (prefer an exact PR
-   number if the user gave one, or an exact ticket-ref match). If zero or more than one match, STOP
-   and ask the user to disambiguate — never guess, or you may delete the wrong worktree/branch.
-   Capture into shell variables:
+   The list query returns only `title`/`number`/`headRefName` — to verify a ticket-ref match in the
+   body, fetch each candidate's body with `gh pr view <number> --json number,headRefName,body,state`.
+   Require **exactly one** PR that clearly references this ticket (prefer a PR number the user gave, or
+   an exact ticket-ref match in the body/title). If zero or more than one match, STOP and ask the user
+   to disambiguate — never guess, or you may delete the wrong worktree/branch. Capture into shell
+   variables:
    ```bash
    NUMBER=<the PR number>
    BRANCH=<the headRefName, e.g. feat/the-slug>
