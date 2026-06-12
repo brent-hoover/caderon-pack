@@ -10,7 +10,9 @@ export const meta = {
 
 // args = { ticket:{title,body,acceptanceCriteria[]}, verifyCmds:{build,lint,test},
 //          worktreePath, branch, base, caps:{test,dev,refine} }
-const { ticket, verifyCmds, worktreePath, base, caps } = args
+// The Workflow runner may deliver args as a parsed object or as a JSON string — accept both.
+const A = typeof args === 'string' ? JSON.parse(args) : (args || {})
+const { ticket, verifyCmds, worktreePath, base, caps } = A
 // Only embed base in the review command if it's a plausible git ref — guards against metacharacters
 // in an unexpected default-branch value altering the command the agent runs.
 const baseArg = base && /^[A-Za-z0-9._/-]+$/.test(base) ? ` --base ${base}` : ''
