@@ -39,5 +39,7 @@ Post-merge wrap-up for ticket `$ARGUMENTS`. Run ONLY after the user confirms the
    git branch -d "$BRANCH"
    ```
    If `git worktree remove` reports uncommitted changes, STOP and confirm with the user before using
-   `--force`.
+   `--force`. `git branch -d` will fail when the PR was squash- or rebase-merged (the local branch is
+   not an ancestor of the updated default branch). Since you have already confirmed the PR is merged
+   (step 2), ask the user to approve `git branch -D "$BRANCH"`, or report that the branch was retained.
 7. **Report.** Summarize: docs PR (or none), worktree removed, branch deleted.

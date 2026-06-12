@@ -43,3 +43,31 @@ STUB
   grep -q 'jig issue comment jig-7 --body-file -' "$stubdir/log"
   grep -q 'hello clarif' "$stubdir/log.body"
 }
+
+@test "comment github pipes stdin to gh issue comment --body-file -" {
+  stubdir="$(mktemp -d)"
+  cat >"$stubdir/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "gh $*" >>"$STUB_LOG"
+cat >"$STUB_LOG.body"
+STUB
+  chmod +x "$stubdir/gh"
+  run env STUB_LOG="$stubdir/log" PATH="$stubdir:$PATH" bash -c "echo 'gh clarif' | bash '$SCRIPT' comment github 99"
+  [ "$status" -eq 0 ]
+  grep -q 'gh issue comment 99 --body-file -' "$stubdir/log"
+  grep -q 'gh clarif' "$stubdir/log.body"
+}
+
+@test "show jig calls jig issue show with the ref" {
+  stubdir="$(mktemp -d)"
+  cat >"$stubdir/jig" <<'STUB'
+#!/usr/bin/env bash
+echo "jig $*" >>"$STUB_LOG"
+echo "Title: T"
+STUB
+  chmod +x "$stubdir/jig"
+  run env STUB_LOG="$stubdir/log" PATH="$stubdir:$PATH" bash "$SCRIPT" show jig jig-3
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Title: T"* ]]
+  grep -q 'jig issue show jig-3' "$stubdir/log"
+}
