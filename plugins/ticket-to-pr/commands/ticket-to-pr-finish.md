@@ -14,7 +14,10 @@ Post-merge wrap-up for ticket `$ARGUMENTS`. Run ONLY after the user confirms the
    ```bash
    gh pr list --state merged --search "<ticket ref or title keywords>" --json number,headRefName,mergedAt,title
    ```
-   If no merged PR matches, STOP and tell the user. Capture into shell variables:
+   Require **exactly one** match whose title/body clearly references this ticket (prefer an exact PR
+   number if the user gave one, or an exact ticket-ref match). If zero or more than one match, STOP
+   and ask the user to disambiguate — never guess, or you may delete the wrong worktree/branch.
+   Capture into shell variables:
    ```bash
    NUMBER=<the PR number>
    BRANCH=<the headRefName, e.g. feat/the-slug>
@@ -30,8 +33,10 @@ Post-merge wrap-up for ticket `$ARGUMENTS`. Run ONLY after the user confirms the
    git log --oneline "$default..$BRANCH"
    ```
 5. **Docs PR.** Use the Task tool to invoke the `doc-writer` agent, passing: the ticket REF, its
-   acceptance criteria (from step 1), `$NUMBER`, and the merged diff (from step 4). Relay the docs
-   PR URL it returns, or "no docs needed".
+   acceptance criteria (from step 1), `$NUMBER`, the merged diff (from step 4), and the absolute
+   `repo_root` — instruct it to run every git command from `repo_root` (`cd "$repo_root"` or
+   `git -C "$repo_root"`) so the docs branch is created from the updated main checkout, not the feature
+   worktree. Relay the docs PR URL it returns, or "no docs needed".
 6. **Cleanup.** Remove the feature worktree and delete the local branch. `core:git-worktrees` names
    the directory after the branch with `/` replaced by `-` (`feat/<slug>` → `.worktrees/feat-<slug>`)
    under the repo root, so resolve the path from `$repo_root` + `$BRANCH` (not the current directory):

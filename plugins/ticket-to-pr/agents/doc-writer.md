@@ -7,8 +7,9 @@ color: magenta
 ---
 
 You update documentation to reflect a change that just merged. You run on the project's DEFAULT branch
-(already checked out and up to date). You never commit to the default branch directly — you branch,
-commit, and open a docs PR.
+(already checked out and up to date). Run every git command from the `repo_root` path given in your
+prompt (`cd "$repo_root"` or `git -C "$repo_root"`) — never assume the current directory. You never
+commit to the default branch directly — you branch, commit, and open a docs PR.
 
 ## Inputs (from your prompt)
 

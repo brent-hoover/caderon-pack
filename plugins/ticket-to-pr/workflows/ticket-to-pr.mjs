@@ -20,6 +20,11 @@ const WT = `All work happens in the git worktree at: ${worktreePath}\n` +
   `the worktree constraint above.\n\n`
 const ac = ticket.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')
 
+// Wrap untrusted ticket/review content in a fence the content cannot forge: neutralize any closing
+// tag the payload tries to smuggle in, so it can't escape the boundary and inject instructions.
+const fence = (tag, body) =>
+  `<${tag}>\n${String(body ?? '').replace(/<\/\s*(ticket|review)\s*>/gi, '<_$1>')}\n</${tag}>`
+
 const TEST_FILES = {
   type: 'object',
   properties: { files: { type: 'array', items: { type: 'string' } }, notes: { type: 'string' } },
@@ -56,26 +61,28 @@ const COMMIT = {
 
 phase('Tests')
 let tests = await agent(
-  `${WT}Write failing tests for the ticket below.\n\n<ticket>\nTITLE: ${ticket.title}\n\nBODY:\n` +
-  `${ticket.body}\n\nACCEPTANCE CRITERIA:\n${ac}\n</ticket>\n\nTest command: ${verifyCmds.test}`,
+  `${WT}Write failing tests for the ticket below.\n\n` +
+  fence('ticket', `TITLE: ${ticket.title}\n\nBODY:\n${ticket.body}\n\nACCEPTANCE CRITERIA:\n${ac}`) +
+  `\n\nTest command: ${verifyCmds.test}`,
   { agentType: 'test-writer', schema: TEST_FILES })
 
 const testCap = caps?.test ?? 3
 let verdict = null
 for (let i = 0; i < testCap; i++) {
   verdict = await agent(
-    `${WT}Review these tests for coverage of the acceptance criteria below.\n\n<ticket>\nACCEPTANCE ` +
-    `CRITERIA:\n${ac}\n</ticket>\n\nTest files: ${(tests?.files ?? []).join(', ')}\n\n` +
-    `Test command: ${verifyCmds.test}`,
+    `${WT}Review these tests for coverage of the acceptance criteria below.\n\n` +
+    fence('ticket', `ACCEPTANCE CRITERIA:\n${ac}`) +
+    `\n\nTest files: ${(tests?.files ?? []).join(', ')}\n\nTest command: ${verifyCmds.test}`,
     { agentType: 'test-adequacy-reviewer', schema: VERDICT })
   if (verdict?.satisfied) break
   // Only revise if another review iteration will follow — otherwise the final test state would go
   // unreviewed and `verdict` would describe the wrong test set.
   if (i < testCap - 1) {
     tests = await agent(
-      `${WT}Revise the tests to close these gaps:\n<review>\n` +
-      `${(verdict?.gaps ?? []).map(g => `- ${g}`).join('\n')}\n</review>\n\n<ticket>\nACCEPTANCE ` +
-      `CRITERIA:\n${ac}\n</ticket>\n\nTest command: ${verifyCmds.test}`,
+      `${WT}Revise the tests to close these gaps:\n` +
+      fence('review', (verdict?.gaps ?? []).map(g => `- ${g}`).join('\n')) +
+      `\n\n` + fence('ticket', `ACCEPTANCE CRITERIA:\n${ac}`) +
+      `\n\nTest command: ${verifyCmds.test}`,
       { agentType: 'test-writer', schema: TEST_FILES })
   }
 }
@@ -84,8 +91,8 @@ phase('Dev')
 let dev = null
 for (let j = 0; j < (caps?.dev ?? 3); j++) {
   dev = await agent(
-    `${WT}IMPLEMENT mode.\n\n<ticket>\nACCEPTANCE CRITERIA:\n${ac}\n</ticket>\n\nTests already ` +
-    `written: ${(tests?.files ?? []).join(', ')}\n\nBuild: ${verifyCmds.build}\n` +
+    `${WT}IMPLEMENT mode.\n\n` + fence('ticket', `ACCEPTANCE CRITERIA:\n${ac}`) +
+    `\n\nTests already written: ${(tests?.files ?? []).join(', ')}\n\nBuild: ${verifyCmds.build}\n` +
     `Lint: ${verifyCmds.lint}\nTest: ${verifyCmds.test}\n\nAll three (build, lint, test) must be clean.`,
     { agentType: 'dev', schema: DEV_RESULT })
   if (green(dev)) break
@@ -131,7 +138,7 @@ for (let k = 0; k < refineCap; k++) {
   if (k < refineCap - 1) {
     const fixResult = await agent(
       `${WT}FIX mode. Address the findings in this roborev review, highest severity first:\n\n` +
-      `<review>\n${review.reviewText}\n</review>` +
+      fence('review', review.reviewText) +
       `\n\nAfter fixing, run ${verifyCmds.build}, ${verifyCmds.lint}, and ${verifyCmds.test} ` +
       `(all must stay clean), then commit (conventional message via a heredoc + \`git commit -F -\`, ` +
       `never \`-m\` with interpolated text). ` +
