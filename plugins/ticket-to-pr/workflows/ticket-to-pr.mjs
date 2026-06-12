@@ -9,8 +9,9 @@ export const meta = {
 }
 
 // args = { ticket:{title,body,acceptanceCriteria[]}, verifyCmds:{build,lint,test},
-//          worktreePath, branch, caps:{test,dev,refine} }
-const { ticket, verifyCmds, worktreePath, caps } = args
+//          worktreePath, branch, base, caps:{test,dev,refine} }
+const { ticket, verifyCmds, worktreePath, base, caps } = args
+const baseArg = base ? ` --base ${base}` : ''
 const WT = `All work happens in the git worktree at: ${worktreePath}\n` +
   `Run \`cd "${worktreePath}"\` before ANY command. Never operate on the main checkout.\n\n`
 const ac = ticket.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')
@@ -92,8 +93,11 @@ phase('Refine')
 // Commit the implemented state first so roborev has commits to review (also guarantees at least one
 // commit exists even when the first review passes).
 const commitInfo = await agent(
-  `${WT}Stage all changes and create ONE commit. Message (conventional): ` +
-  `"feat: ${ticket.title}". Then output the commit SHA on the last line.`,
+  `${WT}Stage all changes and create ONE commit with this conventional subject:\n` +
+  `  feat: ${ticket.title}\n` +
+  `Write the message via a heredoc and \`git commit -F -\` — do NOT use \`git commit -m\` with the ` +
+  `subject interpolated, as the ticket title may contain shell metacharacters. ` +
+  `Then output the commit SHA on the last line.`,
   { agentType: 'dev' })
 
 const refineCap = caps?.refine ?? 10
@@ -101,7 +105,7 @@ let refinePass = false
 for (let k = 0; k < refineCap; k++) {
   const review = await agent(
     `${WT}Run roborev on this branch and report the verdict + review text as JSON.\n` +
-    `1. Run: roborev review --branch --wait  (it exits 1 on Fail — expected; capture output).\n` +
+    `1. Run: roborev review --branch${baseArg} --wait  (exits 1 on Fail — expected; capture output).\n` +
     `2. Extract the job id from the "Enqueued job <id>" line. For a panel, use the synthesis PARENT job.\n` +
     `3. Poll: roborev list --json until that job's status == "done".\n` +
     `4. Run: roborev show <jobId> --json. passed = (verdict_bool == 1). reviewText = the "output" field.\n` +
@@ -115,7 +119,8 @@ for (let k = 0; k < refineCap; k++) {
       `${WT}FIX mode. Address the findings in this roborev review, highest severity first:\n\n` +
       review.reviewText +
       `\n\nAfter fixing, run ${verifyCmds.build}, ${verifyCmds.lint}, and ${verifyCmds.test} ` +
-      `(all must stay clean), then commit (conventional). ` +
+      `(all must stay clean), then commit (conventional message via a heredoc + \`git commit -F -\`, ` +
+      `never \`-m\` with interpolated text). ` +
       `Then comment a concise summary on the review and close it. Pass the comment via a heredoc ` +
       `(never interpolate review text into the shell):\n` +
       `  roborev comment --commenter ticket-to-pr --job ${review.jobId} -m "$(cat <<'TTP_C'\n` +

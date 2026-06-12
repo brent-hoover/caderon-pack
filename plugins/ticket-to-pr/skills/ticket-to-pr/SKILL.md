@@ -38,8 +38,9 @@ The adapter and workflow ship in this plugin; reference them by absolute path:
    verify commands. On their go-ahead, launch the Workflow tool with
    `scriptPath: ${CLAUDE_PLUGIN_ROOT}/workflows/ticket-to-pr.mjs` and
    `args: { ticket:{title,body,acceptanceCriteria}, verifyCmds:{build,lint,test}, worktreePath,
-   branch, caps:{test:3,dev:3,refine:10} }`. The workflow runs in the background; you will be notified
-   when it completes.
+   branch, base, caps:{test:3,dev:3,refine:10} }` where `base` is the project default branch the
+   worktree was created from (the roborev review uses `--base <base>`). The workflow runs in the
+   background; you will be notified when it completes.
 
 ## ZONE C — main conversation (human-gated), after the workflow returns
 
