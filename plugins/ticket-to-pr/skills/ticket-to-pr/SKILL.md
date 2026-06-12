@@ -14,16 +14,17 @@ The adapter and workflow ship in this plugin; reference them by absolute path:
 
 ## ZONE A — main conversation (human-gated)
 
-1. **Resolve the ticket.** Split the argument on `:` into SRC and REF. Run
-   `${CLAUDE_PLUGIN_ROOT}/scripts/ticket.sh show $SRC $REF`. Parse title, body, and the acceptance
+1. **Resolve the ticket.** Split the argument on `:` into SRC and REF. Validate `SRC` is exactly
+   `github` or `jig` (reject anything else). Always quote the expansions to avoid shell injection from
+   crafted refs: `"${CLAUDE_PLUGIN_ROOT}/scripts/ticket.sh" show "$SRC" "$REF"`. Parse title, body, and the acceptance
    criteria. GitHub returns JSON (`.title`, `.body`); jig returns text — read the Acceptance Criteria
    from the body. If you cannot find explicit acceptance criteria, STOP and tell the user the ticket
    has none.
 2. **Review + clarify.** Read the ticket critically. If anything is ambiguous or under-specified, ask
    the user with AskUserQuestion (one focused round). If everything is clear, say so and skip.
 3. **Record clarifications.** For each answered question, post it back to the ticket via stdin:
-   `printf '%s' "$TEXT" | ${CLAUDE_PLUGIN_ROOT}/scripts/ticket.sh comment $SRC $REF`. Use a single
-   comment summarizing Q&A.
+   `printf '%s' "$TEXT" | "${CLAUDE_PLUGIN_ROOT}/scripts/ticket.sh" comment "$SRC" "$REF"`. Use a
+   single comment summarizing Q&A.
 4. **Detect verify commands.** The workflow needs all three of `build`, `lint`, `test` defined and
    non-empty. In order: (a) read the project `CLAUDE.md` `## Commands` section; (b) else infer from
    project type — `go.mod` → `go build ./...` / `go vet ./...` / `go test ./...`; `pyproject.toml` →
