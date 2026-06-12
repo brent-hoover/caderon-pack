@@ -4,7 +4,7 @@ export const meta = {
   phases: [
     { title: 'Tests' },
     { title: 'Dev' },
-    { title: 'Commit' },
+    { title: 'Refine' },
   ],
 }
 
@@ -32,6 +32,13 @@ const VERDICT = {
   type: 'object',
   properties: { satisfied: { type: 'boolean' }, gaps: { type: 'array', items: { type: 'string' } } },
   required: ['satisfied', 'gaps'],
+}
+const REVIEW = {
+  type: 'object',
+  properties: {
+    passed: { type: 'boolean' }, jobId: { type: 'string' }, reviewText: { type: 'string' },
+  },
+  required: ['passed', 'jobId', 'reviewText'],
 }
 
 phase('Tests')
@@ -63,15 +70,43 @@ for (let j = 0; j < (caps?.dev ?? 3); j++) {
   if (dev?.testsPassing && dev?.buildClean) break
 }
 
-phase('Commit')
+phase('Refine')
+// Commit the implemented state first so roborev has commits to review (also guarantees at least one
+// commit exists even when the first review passes).
 const commitInfo = await agent(
   `${WT}Stage all changes and create ONE commit. Message (conventional): ` +
   `"feat: ${ticket.title}". Then output the commit SHA on the last line.`,
   { agentType: 'dev' })
 
+let refinePass = false
+for (let k = 0; k < (caps?.refine ?? 10); k++) {
+  const review = await agent(
+    `${WT}Run roborev on this branch and report the verdict + review text as JSON.\n` +
+    `1. Run: roborev review --branch --wait  (it exits 1 on Fail — expected; capture output).\n` +
+    `2. Extract the job id from the "Enqueued job <id>" line. For a panel, use the synthesis PARENT job.\n` +
+    `3. Poll: roborev list --json until that job's status == "done".\n` +
+    `4. Run: roborev show <jobId> --json. passed = (verdict_bool == 1). reviewText = the "output" field.\n` +
+    `Return passed, jobId (as string), and reviewText. Do NOT fix anything.`,
+    { agentType: 'dev', schema: REVIEW })
+  if (review?.passed) { refinePass = true; break }
+  await agent(
+    `${WT}FIX mode. Address the findings in this roborev review, highest severity first:\n\n` +
+    review.reviewText +
+    `\n\nAfter fixing, run ${verifyCmds.test} (keep green), then commit (conventional). ` +
+    `Then comment a concise summary on the review and close it. Pass the comment via a heredoc ` +
+    `(never interpolate review text into the shell):\n` +
+    `  roborev comment --commenter ticket-to-pr --job ${review.jobId} -m "$(cat <<'TTP_C'\n` +
+    `<your summary of fixes + any dismissed findings>\nTTP_C\n)"\n` +
+    `  roborev close ${review.jobId}\n` +
+    `(Confirm the exact comment flag with \`roborev comment --help\`; the refine skill uses -m.) ` +
+    `If a commit-scoped hook review appears (roborev wait), close it too.`,
+    { agentType: 'dev', schema: DEV_RESULT })
+}
+
 return {
   testFiles: tests?.files ?? [], diffSummary: dev?.diffSummary ?? '',
   acMet: dev?.acMet ?? [], testsPassing: !!dev?.testsPassing, buildClean: !!dev?.buildClean,
   adequacyVerdict: verdict?.satisfied ? 'satisfied' : 'cap-reached',
+  roborevVerdict: refinePass ? 'pass' : 'cap-reached',
   commitInfo,
 }
