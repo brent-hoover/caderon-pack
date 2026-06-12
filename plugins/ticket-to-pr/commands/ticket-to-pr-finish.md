@@ -6,13 +6,28 @@ argument-hint: <source>:<id>  e.g. github:1234 or jig:jig-12
 
 Post-merge wrap-up for ticket `$ARGUMENTS`. Run ONLY after the user confirms the PR merged.
 
-1. **Confirm merge.** Verify the PR for this ticket is merged (GitHub: `gh pr list --search` /
-   `gh pr view`). If not merged, STOP and tell the user.
-2. **Update the default branch.** Check out the project default branch and pull so the merged change
-   is present.
-3. **Docs PR.** Use the Task tool to invoke the `doc-writer` agent, passing the ticket reference, its
-   acceptance criteria, and the merged PR diff/range. Relay the docs PR URL (or "no docs needed").
-4. **Cleanup.** Remove the feature worktree and delete the local feature branch:
-   `git worktree remove .worktrees/<slug>` then `git branch -d feat/<slug>`. Confirm with the user
-   before deleting if the worktree has uncommitted changes.
-5. **Report.** Summarize: docs PR (or none), worktree removed, branch deleted.
+1. **Resolve the ticket.** Split `$ARGUMENTS` on `:` into SRC and REF. Run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/ticket.sh show $SRC $REF` and extract the title and acceptance
+   criteria (you pass these to `doc-writer`). The code PR is always on GitHub regardless of SRC.
+2. **Find the merged PR + its branch.** Locate the PR for this work and confirm it is merged:
+   ```bash
+   gh pr list --state merged --search "<ticket ref or title keywords>" --json number,headRefName,mergedAt,title
+   ```
+   If no merged PR matches, STOP and tell the user. Record `NUMBER` and `BRANCH` (`headRefName`, e.g.
+   `feat/<slug>`). Derive `SLUG` = `BRANCH` with the leading `feat/` removed.
+3. **Update the default branch.** Determine it
+   (`git symbolic-ref --short refs/remotes/origin/HEAD | sed 's@^origin/@@'`), check it out in the main
+   checkout, and `git pull` so the merged change is present.
+4. **Get the merged diff** for `doc-writer`: `gh pr diff NUMBER` (or `git log --oneline <default>..BRANCH`
+   if the branch ref still exists locally).
+5. **Docs PR.** Use the Task tool to invoke the `doc-writer` agent, passing: the ticket REF, its
+   acceptance criteria (from step 1), the PR NUMBER, and the merged diff (from step 4). Relay the docs
+   PR URL it returns, or "no docs needed".
+6. **Cleanup.** Remove the feature worktree and delete the local branch:
+   ```bash
+   git worktree remove ".worktrees/$SLUG"      # add --force only after confirming no wanted changes
+   git branch -d "$BRANCH"
+   ```
+   If `git worktree remove` reports uncommitted changes, STOP and confirm with the user before using
+   `--force`.
+7. **Report.** Summarize: docs PR (or none), worktree removed, branch deleted.
