@@ -23,9 +23,12 @@ Post-merge wrap-up for ticket `$ARGUMENTS`. Run ONLY after the user confirms the
 5. **Docs PR.** Use the Task tool to invoke the `doc-writer` agent, passing: the ticket REF, its
    acceptance criteria (from step 1), the PR NUMBER, and the merged diff (from step 4). Relay the docs
    PR URL it returns, or "no docs needed".
-6. **Cleanup.** Remove the feature worktree and delete the local branch:
+6. **Cleanup.** Remove the feature worktree and delete the local branch. `core:git-worktrees` names
+   the directory after the branch with `/` replaced by `-` (`feat/<slug>` → `.worktrees/feat-<slug>`),
+   so derive the path from `BRANCH`, not `SLUG`:
    ```bash
-   git worktree remove ".worktrees/$SLUG"      # add --force only after confirming no wanted changes
+   WORKTREE_DIR=".worktrees/${BRANCH//\//-}"
+   git worktree remove "$WORKTREE_DIR"         # add --force only after confirming no wanted changes
    git branch -d "$BRANCH"
    ```
    If `git worktree remove` reports uncommitted changes, STOP and confirm with the user before using

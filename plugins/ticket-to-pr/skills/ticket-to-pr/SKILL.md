@@ -24,10 +24,14 @@ The adapter and workflow ship in this plugin; reference them by absolute path:
 3. **Record clarifications.** For each answered question, post it back to the ticket via stdin:
    `printf '%s' "$TEXT" | ${CLAUDE_PLUGIN_ROOT}/scripts/ticket.sh comment $SRC $REF`. Use a single
    comment summarizing Q&A.
-4. **Detect verify commands.** In order: (a) read the project `CLAUDE.md` `## Commands` section for
-   build/lint/test; (b) else infer from project type — `go.mod` → `go build ./...` / `go vet ./...` /
-   `go test ./...`; `pyproject.toml` → `ruff check .` / `pytest`; `package.json` → its `build`/`lint`/
-   `test` scripts; (c) else ASK the user. Confirm the three commands with the user in one line.
+4. **Detect verify commands.** The workflow needs all three of `build`, `lint`, `test` defined and
+   non-empty. In order: (a) read the project `CLAUDE.md` `## Commands` section; (b) else infer from
+   project type — `go.mod` → `go build ./...` / `go vet ./...` / `go test ./...`; `pyproject.toml` →
+   build `python -m build` (or `true` if the project isn't packaged) / lint `ruff check .` / test
+   `pytest`; `package.json` → its `build`/`lint`/`test` scripts (use `true` for any the project
+   doesn't define). **(c) For ANY of the three you cannot confidently infer, ASK the user — never
+   launch the workflow with an empty or guessed command.** Confirm the final three with the user in
+   one line before launching.
 5. **Create the worktree.** Use the core:git-worktrees skill. Branch `feat/<slug>` (slug from the
    ticket title) off the project's default branch. Record the absolute worktree path.
 6. **Confirm + launch.** Show the user: ticket title, the slug/branch, worktree path, and the three
