@@ -1,0 +1,36 @@
+{
+  "name": "ticket-to-pr",
+  "version": "0.1.0",
+  "description": "Drive one ticket (GitHub Issue or jig) through clarify \u2192 tests \u2192 implement \u2192 roborev review-fix \u2192 PR, with a post-merge docs PR and cleanup",
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "tickets",
+    "tdd",
+    "pull-request",
+    "roborev",
+    "github",
+    "jig"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Ticket To Pr",
+    "shortDescription": "Drive one ticket (GitHub Issue or jig) through clarify \u2192 tests \u2192 implement \u2192 roborev review-fix ",
+    "longDescription": "Drive one ticket (GitHub Issue or jig) through clarify \u2192 tests \u2192 implement \u2192 roborev review-fix \u2192 PR, with a post-merge docs PR and cleanup",
+    "developerName": "Brent Hoover",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Help me use Ticket To Pr."
+    ]
+  }
+}

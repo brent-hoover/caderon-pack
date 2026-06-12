@@ -51,6 +51,18 @@
         "authentication": "ON_INSTALL"
       },
       "category": "DevOps"
+    },
+    {
+      "name": "ticket-to-pr",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ticket-to-pr"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
     }
   ]
 }
