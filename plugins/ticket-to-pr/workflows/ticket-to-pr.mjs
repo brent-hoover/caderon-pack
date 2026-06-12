@@ -42,6 +42,13 @@ const REVIEW = {
   },
   required: ['passed', 'jobId', 'reviewText'],
 }
+const COMMIT = {
+  type: 'object',
+  properties: {
+    committed: { type: 'boolean' }, sha: { type: 'string' }, treeClean: { type: 'boolean' },
+  },
+  required: ['committed', 'treeClean'],
+}
 
 phase('Tests')
 let tests = await agent(
@@ -93,12 +100,13 @@ phase('Refine')
 // Commit the implemented state first so roborev has commits to review (also guarantees at least one
 // commit exists even when the first review passes).
 const commitInfo = await agent(
-  `${WT}Stage all changes and create ONE commit with this conventional subject:\n` +
+  `${WT}Stage ALL changes and create ONE commit with this conventional subject:\n` +
   `  feat: ${ticket.title}\n` +
   `Write the message via a heredoc and \`git commit -F -\` — do NOT use \`git commit -m\` with the ` +
   `subject interpolated, as the ticket title may contain shell metacharacters. ` +
-  `Then output the commit SHA on the last line.`,
-  { agentType: 'dev' })
+  `Then verify: \`git status --porcelain\` must be empty and \`git rev-parse HEAD\` gives the new SHA. ` +
+  `Return committed=true only if the commit succeeded and the tree is clean.`,
+  { agentType: 'dev', schema: COMMIT })
 
 const refineCap = caps?.refine ?? 10
 let refinePass = false
@@ -133,10 +141,24 @@ for (let k = 0; k < refineCap; k++) {
   }
 }
 
-// 'ok' requires ALL of: adequacy converged, roborev passed, and a green tree. Any single failure
-// yields a distinct non-ok status so Zone C never auto-offers push/PR on incomplete work.
+// Verify the branch is actually committed and clean before declaring success — fixes may have left
+// uncommitted changes, and an unverified commit could ship a PR missing the implementation.
+const finalCheck = await agent(
+  `${WT}Run \`git status --porcelain\` and \`git rev-parse HEAD\`. Return treeClean=true ONLY if ` +
+  `\`git status --porcelain\` produced no output, plus the current headSha.`,
+  { agentType: 'dev', schema: {
+    type: 'object',
+    properties: { treeClean: { type: 'boolean' }, headSha: { type: 'string' } },
+    required: ['treeClean'],
+  } })
+const committedClean = !!commitInfo?.committed && !!finalCheck?.treeClean
+
+// 'ok' requires ALL of: adequacy converged, roborev passed, a green tree, and a verified clean commit.
+// Any single failure yields a distinct non-ok status so Zone C never auto-offers push/PR on
+// incomplete work.
 let status
-if (verdict?.satisfied && refinePass && green(dev)) status = 'ok'
+if (verdict?.satisfied && refinePass && green(dev) && committedClean) status = 'ok'
+else if (!committedClean) status = 'commit-incomplete'
 else if (!green(dev)) status = 'verification-red'
 else if (!verdict?.satisfied) status = 'test-adequacy-cap-reached'
 else status = 'roborev-cap-reached'

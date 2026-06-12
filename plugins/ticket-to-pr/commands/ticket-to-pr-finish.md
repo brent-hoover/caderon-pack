@@ -6,8 +6,9 @@ argument-hint: <source>:<id>  e.g. github:1234 or jig:jig-12
 
 Post-merge wrap-up for ticket `$ARGUMENTS`. Run ONLY after the user confirms the PR merged.
 
-1. **Resolve the ticket.** Split `$ARGUMENTS` on `:` into SRC and REF. Run
-   `${CLAUDE_PLUGIN_ROOT}/scripts/ticket.sh show $SRC $REF` and extract the title and acceptance
+1. **Resolve the ticket.** Split `$ARGUMENTS` on `:` into SRC and REF. Validate `SRC` is exactly
+   `github` or `jig`, then (quoting all expansions) run
+   `"${CLAUDE_PLUGIN_ROOT}/scripts/ticket.sh" show "$SRC" "$REF"` and extract the title and acceptance
    criteria (you pass these to `doc-writer`). The code PR is always on GitHub regardless of SRC.
 2. **Find the merged PR + its branch.** Locate the PR for this work and confirm it is merged:
    ```bash
