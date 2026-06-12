@@ -48,17 +48,22 @@ let tests = await agent(
   `ACCEPTANCE CRITERIA:\n${ac}\n\nTest command: ${verifyCmds.test}`,
   { agentType: 'test-writer', schema: TEST_FILES })
 
+const testCap = caps?.test ?? 3
 let verdict = null
-for (let i = 0; i < (caps?.test ?? 3); i++) {
+for (let i = 0; i < testCap; i++) {
   verdict = await agent(
     `${WT}Review these tests for coverage of the acceptance criteria.\n\nACCEPTANCE CRITERIA:\n${ac}` +
     `\n\nTest files: ${(tests?.files ?? []).join(', ')}\n\nTest command: ${verifyCmds.test}`,
     { agentType: 'test-adequacy-reviewer', schema: VERDICT })
   if (verdict?.satisfied) break
-  tests = await agent(
-    `${WT}Revise the tests to close these gaps:\n${(verdict?.gaps ?? []).map(g => `- ${g}`).join('\n')}` +
-    `\n\nACCEPTANCE CRITERIA:\n${ac}\n\nTest command: ${verifyCmds.test}`,
-    { agentType: 'test-writer', schema: TEST_FILES })
+  // Only revise if another review iteration will follow — otherwise the final test state would go
+  // unreviewed and `verdict` would describe the wrong test set.
+  if (i < testCap - 1) {
+    tests = await agent(
+      `${WT}Revise the tests to close these gaps:\n${(verdict?.gaps ?? []).map(g => `- ${g}`).join('\n')}` +
+      `\n\nACCEPTANCE CRITERIA:\n${ac}\n\nTest command: ${verifyCmds.test}`,
+      { agentType: 'test-writer', schema: TEST_FILES })
+  }
 }
 
 phase('Dev')
@@ -91,8 +96,9 @@ const commitInfo = await agent(
   `"feat: ${ticket.title}". Then output the commit SHA on the last line.`,
   { agentType: 'dev' })
 
+const refineCap = caps?.refine ?? 10
 let refinePass = false
-for (let k = 0; k < (caps?.refine ?? 10); k++) {
+for (let k = 0; k < refineCap; k++) {
   const review = await agent(
     `${WT}Run roborev on this branch and report the verdict + review text as JSON.\n` +
     `1. Run: roborev review --branch --wait  (it exits 1 on Fail — expected; capture output).\n` +
@@ -102,20 +108,24 @@ for (let k = 0; k < (caps?.refine ?? 10); k++) {
     `Return passed, jobId (as string), and reviewText. Do NOT fix anything.`,
     { agentType: 'dev', schema: REVIEW })
   if (review?.passed) { refinePass = true; break }
-  const fixResult = await agent(
-    `${WT}FIX mode. Address the findings in this roborev review, highest severity first:\n\n` +
-    review.reviewText +
-    `\n\nAfter fixing, run ${verifyCmds.build}, ${verifyCmds.lint}, and ${verifyCmds.test} ` +
-    `(all must stay clean), then commit (conventional). ` +
-    `Then comment a concise summary on the review and close it. Pass the comment via a heredoc ` +
-    `(never interpolate review text into the shell):\n` +
-    `  roborev comment --commenter ticket-to-pr --job ${review.jobId} -m "$(cat <<'TTP_C'\n` +
-    `<your summary of fixes + any dismissed findings>\nTTP_C\n)"\n` +
-    `  roborev close ${review.jobId}\n` +
-    `(Confirm the exact comment flag with \`roborev comment --help\`; the refine skill uses -m.) ` +
-    `If a commit-scoped hook review appears (roborev wait), close it too.`,
-    { agentType: 'dev', schema: DEV_RESULT })
-  if (fixResult) dev = fixResult   // returned state must reflect post-fix code, not pre-roborev
+  // Don't fix on the last allowed attempt — the loop would exit with unreviewed changes and a verdict
+  // that no longer matches the branch. The final iteration is review-only.
+  if (k < refineCap - 1) {
+    const fixResult = await agent(
+      `${WT}FIX mode. Address the findings in this roborev review, highest severity first:\n\n` +
+      review.reviewText +
+      `\n\nAfter fixing, run ${verifyCmds.build}, ${verifyCmds.lint}, and ${verifyCmds.test} ` +
+      `(all must stay clean), then commit (conventional). ` +
+      `Then comment a concise summary on the review and close it. Pass the comment via a heredoc ` +
+      `(never interpolate review text into the shell):\n` +
+      `  roborev comment --commenter ticket-to-pr --job ${review.jobId} -m "$(cat <<'TTP_C'\n` +
+      `<your summary of fixes + any dismissed findings>\nTTP_C\n)"\n` +
+      `  roborev close ${review.jobId}\n` +
+      `(Confirm the exact comment flag with \`roborev comment --help\`; the refine skill uses -m.) ` +
+      `If a commit-scoped hook review appears (roborev wait), close it too.`,
+      { agentType: 'dev', schema: DEV_RESULT })
+    if (fixResult) dev = fixResult   // returned state must reflect post-fix code, not pre-roborev
+  }
 }
 
 return {

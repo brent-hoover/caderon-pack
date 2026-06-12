@@ -43,10 +43,13 @@ The adapter and workflow ship in this plugin; reference them by absolute path:
 
 ## ZONE C — main conversation (human-gated), after the workflow returns
 
-7. **Present the result.** Summarize the workflow return: test files, diff summary, acceptance
-   criteria met, roborev verdict, and whether build/tests are green. If roborev hit its cap without
-   passing, say so explicitly.
-8. **Push + PR (only on explicit approval).** Never push automatically. On the user's OK, push the
+7. **Present the result.** Summarize the full workflow return — `status`, `testsPassing`,
+   `buildClean`, `lintClean`, `adequacyVerdict`, `roborevVerdict`, the test files, the diff summary,
+   and the acceptance criteria met. Call out explicitly any non-green signal: `status` other than
+   `ok`, a `cap-reached` adequacy/roborev verdict, or any false among tests/build/lint.
+8. **Push + PR (only on explicit approval).** Only offer to push/open the PR automatically when
+   `status == "ok"`; for any other status, surface what's unresolved and let the user decide whether
+   to proceed. Never push automatically. On the user's OK, push the
    branch (`git push -u origin <branch>` — never set the upstream to the default branch) and open a PR
    following the user's PR conventions: conventional-commit title; Problem/Fix section; change summary;
    special-attention notes; a pre-merge checklist; manual test steps. Reference the ticket in the PR
