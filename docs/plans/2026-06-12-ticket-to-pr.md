@@ -381,7 +381,7 @@ touch the main checkout.
 
 ## FIX mode
 
-1. You are given a list of roborev findings (severity, file, line, description).
+1. You are given the roborev review text (findings as prose, with severities). Parse out each issue.
 2. Fix them, highest severity first. If a finding is a false positive or intentional, do NOT change
    code for it — record it in `notes` for the review comment.
 3. Re-run build + tests; keep them green.
@@ -738,13 +738,17 @@ until the branch verdict passes or the cap is hit.
 **Files:**
 - Modify: `plugins/ticket-to-pr/workflows/ticket-to-pr.mjs`
 
-- [ ] **Step 1: Confirm roborev JSON surface (prerequisite check)**
+- [ ] **Step 1: roborev JSON surface (CONFIRMED 2026-06-12)**
 
-From a feature branch with a commit, run: `roborev review --branch --wait`; capture the job id from
-`Enqueued job <id>`; then `roborev show <id> --json` and inspect for a verdict field and findings with
-severity/file/line. Record the exact field names. If `show --json` lacks findings, the loop parses the
-human output of `roborev review --branch --wait` instead (documented fallback). Also confirm the daemon
-is up: `roborev status --json` → `.running == true` (start with `roborev daemon start` if not).
+Verified against job 1034 on this branch. `roborev show <id> --json` returns:
+- `verdict_bool` (int, 1 = Pass / 0 = Fail) and `job.verdict` ("P"/"F") — use for the pass/fail gate.
+- `output` (string) — the review findings as **free text** (e.g. "No issues found. Summary: ...").
+  There is NO structured findings array. The dev fix agent receives this `output` text verbatim.
+- `job.status` ("done"/"running"/"failed"). `roborev review --branch --base <default> --wait` is
+  async; `--wait` may return before completion, so poll `roborev list --json` for the job's
+  `status == done` before reading `show --json`.
+Daemon must be running: `roborev status --json` → `.running == true` (start with `roborev daemon
+start`). The repo auto-registers on first `roborev review`; no explicit `roborev init` needed.
 
 - [ ] **Step 2: Add a reviewBranch() helper + roborev loop**
 
@@ -752,19 +756,14 @@ The helper runs via a small `dev`-less bash-capable agent OR (preferred) inline 
 `roborev-runner` step. Implement it as an `agent()` that ONLY runs roborev commands and returns parsed
 JSON, so parsing stays in a controlled place:
 
-Add the schema:
+Add the schema (findings are free text in `output`, not a structured array — see Step 1):
 ```javascript
 const REVIEW = {
   type: 'object',
   properties: {
-    passed: { type: 'boolean' }, jobId: { type: 'string' },
-    findings: { type: 'array', items: {
-      type: 'object',
-      properties: { severity: { type: 'string' }, file: { type: 'string' },
-        line: { type: 'integer' }, description: { type: 'string' } },
-      required: ['severity', 'description'] } },
+    passed: { type: 'boolean' }, jobId: { type: 'string' }, reviewText: { type: 'string' },
   },
-  required: ['passed', 'findings'],
+  required: ['passed', 'jobId', 'reviewText'],
 }
 ```
 
@@ -778,17 +777,17 @@ await agent(`${WT}Stage all changes and commit (conventional): "feat: ${ticket.t
 let refinePass = false
 for (let k = 0; k < (caps?.refine ?? 10); k++) {
   const review = await agent(
-    `${WT}Run roborev on this branch and report findings as JSON.\n` +
-    `1. Run: roborev review --branch --wait  (it exits 1 on Fail — that is expected; capture output).\n` +
+    `${WT}Run roborev on this branch and report the verdict + review text as JSON.\n` +
+    `1. Run: roborev review --branch --wait  (it exits 1 on Fail — expected; capture output).\n` +
     `2. Extract the job id from the "Enqueued job <id>" line. For a panel, use the synthesis PARENT job.\n` +
-    `3. Run: roborev show <jobId> --json  and read the verdict + findings.\n` +
-    `Return passed=true iff the branch verdict is Pass. Include jobId and every finding ` +
-    `(severity,file,line,description). Do NOT fix anything.`,
+    `3. Poll: roborev list --json until that job's status == "done".\n` +
+    `4. Run: roborev show <jobId> --json. passed = (verdict_bool == 1). reviewText = the "output" field.\n` +
+    `Return passed, jobId (as string), and reviewText. Do NOT fix anything.`,
     { agentType: 'dev', schema: REVIEW })
   if (review?.passed) { refinePass = true; break }
   await agent(
-    `${WT}FIX mode. Address these roborev findings, highest severity first:\n` +
-    review.findings.map(f => `- [${f.severity}] ${f.file ?? ''}:${f.line ?? ''} ${f.description}`).join('\n') +
+    `${WT}FIX mode. Address the findings in this roborev review, highest severity first:\n\n` +
+    review.reviewText +
     `\n\nAfter fixing, run ${verifyCmds.test} (keep green), then commit (conventional). ` +
     `Then comment a concise summary on the review and close it. Pass the comment via a heredoc ` +
     `(never interpolate review text into the shell):\n` +
