@@ -476,8 +476,9 @@ return {
 
 - [ ] **Step 2: Syntax check**
 
-Run: `node --check plugins/ticket-to-pr/workflows/ticket-to-pr.mjs && echo OK`
-Expected: `OK`
+Run (workflow scripts use top-level `return`/`await` — check as a harness-wrapped async fn, NOT a bare
+module): `node --check <(printf 'async function __wf(){\n'; sed 's/^export const meta =/const meta =/' plugins/ticket-to-pr/workflows/ticket-to-pr.mjs; printf '\n}\n')`
+Expected: exits 0 (no output)
 
 - [ ] **Step 3: Live cwd + end-to-end smoke (manual)**
 
@@ -715,7 +716,8 @@ In the `return { ... }`, add: `adequacyVerdict: verdict?.satisfied ? 'satisfied'
 
 - [ ] **Step 4: Syntax check + smoke**
 
-Run: `node --check plugins/ticket-to-pr/workflows/ticket-to-pr.mjs && echo OK` → `OK`
+Run (workflow scripts use top-level `return`/`await`, so check as a harness-wrapped async fn, NOT a
+bare module): `node --check <(printf 'async function __wf(){\n'; sed 's/^export const meta =/const meta =/' plugins/ticket-to-pr/workflows/ticket-to-pr.mjs; printf '\n}\n') && echo OK` → `OK`
 Smoke: re-run the fixture end-to-end (Task 8 procedure). Confirm in /workflows progress that the
 adequacy loop runs and either reaches `satisfied` or the cap, and the final tests still drive a passing
 implementation.
@@ -809,7 +811,8 @@ the first review passes — the pre-loop commit covers that).
 
 - [ ] **Step 4: Syntax check + smoke**
 
-Run: `node --check plugins/ticket-to-pr/workflows/ticket-to-pr.mjs && echo OK` → `OK`
+Run (workflow scripts use top-level `return`/`await`, so check as a harness-wrapped async fn, NOT a
+bare module): `node --check <(printf 'async function __wf(){\n'; sed 's/^export const meta =/const meta =/' plugins/ticket-to-pr/workflows/ticket-to-pr.mjs; printf '\n}\n') && echo OK` → `OK`
 Smoke: re-run the fixture end-to-end. Confirm the Refine phase runs `roborev review --branch --wait`,
 that findings (if any) get fixed by the dev agent in the worktree, reviews are closed, and the loop
 ends on Pass or cap. Verify on the branch that tests still pass.
