@@ -1,0 +1,21 @@
+{
+  "_comment": "journal-this per-operator config. Written by the setup interview to ~/.config/journal-this/config.json. This template documents every field. Copy it, fill it in, or just run the skill once and let the setup interview create it for you.",
+
+  "operator_name": "Your Name",
+
+  "voice_source": "~/path/to/your/existing/journal/  (folder path, GitHub repo URL, or null if you have no samples yet)",
+
+  "destination": {
+    "_disk_example":   { "type": "disk",   "path": "~/journal/" },
+    "_github_example": { "type": "github", "repo_path": "~/Documents/GitHub/your-repo", "subdir": "journal", "branch": "main", "remote": "origin", "push_mode": "direct" },
+    "_subdir_note":    "subdir has no trailing slash; use \"\" for repo root. Disk configs ignore the git fields.",
+
+    "type": "disk",
+    "path": "~/journal/"
+  },
+
+  "filename_pattern": "YYYY-MM-DD-kebab-slug.md",
+
+  "_commit_trailer_note": "github only — string, or null for no trailer. Disk configs use null (there is no commit).",
+  "commit_trailer": null
+}

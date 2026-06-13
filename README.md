@@ -14,6 +14,7 @@ organized into plugins that are enabled per machine.
 | `doc-driven-development` | all machines | `start-feature` (`problem → design → plan`) + `close-feature` (revisit deferred → completed → archive) documentation lifecycle, with `problem-reviewer` / `design-reviewer` / `plan-reviewer` / `completion-reviewer` Opus agents vetting each doc |
 | `ticket-to-pr` | all machines | `/ticket-to-pr` and `/ticket-to-pr-finish` commands; clarify → tests → implement → roborev → PR workflow |
 | `excalidraw-diagrams` | all machines | `excalidraw` skill for generating `.excalidraw` architecture and K8s diagrams |
+| `journal` | all machines | `journal-this` skill for capturing sessions as dated engineering journal entries |
 
 The **roborev** skills (`roborev-review`, `roborev-fix`, etc.) are intentionally **not** in any
 plugin — they are owned by the `roborev` CLI, which installs them into `~/.claude/skills/` and
@@ -30,7 +31,7 @@ Skills are distributed as plugins from this GitHub marketplace and enabled decla
 chezmoi apply               # writes settings.json with the caderon-pack marketplace + enabled plugins
 # launch Claude Code, or install explicitly:
 claude plugin marketplace add brent-hoover/caderon-pack
-claude plugin install core@caderon-pack go@caderon-pack python@caderon-pack doc-driven-development@caderon-pack -s user
+claude plugin install core@caderon-pack go@caderon-pack python@caderon-pack doc-driven-development@caderon-pack journal@caderon-pack -s user
 ```
 
 Claude resolves the marketplace from GitHub and installs the enabled plugins. Manual
@@ -42,7 +43,7 @@ The per-machine skill set is driven by the `is_personal_machine` chezmoi data va
 (`~/.config/chezmoi/chezmoi.yaml`) and the templated `dot_claude/settings.json.tmpl` in the
 chezmoi repo:
 
-- **Personal machines** (`is_personal_machine: true`): `core`, `go`, `python`, `doc-driven-development`.
+- **Personal machines** (`is_personal_machine: true`): `core`, `go`, `python`, `doc-driven-development`, `journal`.
 - **Work machines**: set `is_personal_machine: false` in `~/.config/chezmoi/chezmoi.yaml`
   before `chezmoi apply`; this additionally enables the `devops` plugin.
 
@@ -60,7 +61,7 @@ at `.agents/plugins/marketplace.json`. From a local checkout:
 
 ```bash
 codex plugin marketplace add /path/to/caderon-pack
-codex plugin add core@caderon-pack go@caderon-pack python@caderon-pack doc-driven-development@caderon-pack
+codex plugin add core@caderon-pack go@caderon-pack python@caderon-pack doc-driven-development@caderon-pack journal@caderon-pack
 ```
 
 Install `devops@caderon-pack` on work machines. Codex packages the `skills/` directories;

@@ -1,0 +1,10 @@
+{
+  "name": "journal",
+  "version": "1.0.0",
+  "description": "Capture a work session as a dated engineering journal entry written in the operator's own voice, saved to a local folder or committed to a GitHub repo",
+  "author": { "name": "Brent Hoover", "email": "brent@thebuddhalodge.com" },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": ["journal", "devlog", "writing", "session", "notes"]
+}

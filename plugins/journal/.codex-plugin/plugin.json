@@ -1,0 +1,36 @@
+{
+  "name": "journal",
+  "version": "1.0.0",
+  "description": "Capture a work session as a dated engineering journal entry written in the operator's own voice, saved to a local folder or committed to a GitHub repo",
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": [
+    "journal",
+    "devlog",
+    "writing",
+    "session",
+    "notes"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Journal",
+    "shortDescription": "Turn a work session into a dated engineering journal entry in your own voice.",
+    "longDescription": "Journal captures the current session as a dated markdown journal entry — what got built, what broke, what got reshaped, and decisions worth carrying forward — written in the operator's voice and saved to a local folder or committed to a GitHub repo.",
+    "developerName": "Brent Hoover",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Journal this session.",
+      "Write a journal entry for what we did today.",
+      "Wrap this up as a journal entry."
+    ]
+  }
+}
