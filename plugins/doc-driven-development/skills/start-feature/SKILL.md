@@ -23,37 +23,51 @@ Each doc is auto-reviewed by a dedicated Opus reviewer subagent before it reache
 
 Before entering any phase:
 
-STOP: DO NOT GO ANY FARTHER. DO NOT PROCEED TO THE NEXT PHASE UNTIL THIS ONE IS COMPLETED.
-Before starting on any new code, create a new git worktree with the feature slug using the git-worktrees skill.
-
 **1. Get the feature slug.**
 
 Check if an argument was passed (e.g., `/start-feature my-feature`). If yes, use it. If not,
 ask: "What's the feature slug? Use kebab-case — e.g. `user-auth`, `billing-export`."
 
-**3. Confirm or create the doc root**
+**2. Create the worktree.**
 
-The doc route should be $PROJECT_ROOT/feature-work/. DO NOT WRITE TO superpower, .claude or any other directory
+```bash
+repo_root=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
+grep -qF '.worktrees' "$repo_root/.gitignore" 2>/dev/null \
+  || printf '\n# git worktrees\n.worktrees/\n' >> "$repo_root/.gitignore"
+base=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
+base="${base:-main}"
+git fetch origin "$base" --quiet || true
+git worktree add -b "feat/<slug>" "$repo_root/.worktrees/feat-<slug>" "origin/$base"
+```
 
-If that directory does not exist, create it
-ALL FEATURE WORK DOCS NEED TO GO IN THE $DOC_ROOT
+Verify before continuing:
+
+```bash
+ls "$repo_root/.worktrees/feat-<slug>"
+```
+
+If this fails, stop and report the error — do not proceed to step 3. Report the absolute worktree path to the user.
+
+**3. Confirm or create the doc root.**
+
+The doc root should be `$PROJECT_ROOT/feature-work/`. DO NOT WRITE TO superpower, .claude or any other directory.
+
+If that directory does not exist, create it. ALL FEATURE WORK DOCS NEED TO GO IN THE `$DOC_ROOT`.
 
 Announce: `Writing docs to <doc-root>/<slug>/`
-
-Create the directory:
 
 ```bash
 mkdir -p <doc-root>/<slug>
 ```
 
-**3. Get metadata:**
+**4. Get metadata:**
 
 ```bash
 date +%Y-%m-%d        # today
 git config user.name  # owner
 ```
 
-**4. Read the three pipeline templates** (needed for reference throughout):
+**5. Read the three pipeline templates** (needed for reference throughout):
 
 - `${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/problem.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/design.md`
