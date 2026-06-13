@@ -7,7 +7,7 @@ organized into plugins that are enabled per machine.
 
 | Plugin | Enabled on | Contents |
 |--------|-----------|----------|
-| `core` | all machines | `explain-code`, `conventional-commit`, `codebase-visualizer`, `code-quality`, `git-master`, `git-worktrees`, `vue-typescript`, `user-stories`, `bdd-specs`, `sqlite-dev`, `agent-teams`; `/quick-fix` command |
+| `core` | all machines | `explain-code`, `conventional-commit`, `codebase-visualizer`, `code-quality`, `git-master`, `git-worktrees`, `vue-typescript`, `user-stories`, `bdd-specs`, `sqlite-dev`, `agent-teams`; `/quick-fix`, `/worktree` commands |
 | `go` | all machines | `go-best-practices`, `go-backend-workflow`, `go-concurrency-patterns`, `go-error-handling`, `go-interfaces` |
 | `python` | all machines | `python-best-practices` |
 | `devops` | work machines only | `helm-debugging`, `helm-values-management`, `k8s-manifest-generator`, `k8s-security-policies`, `terraform-skill` |
