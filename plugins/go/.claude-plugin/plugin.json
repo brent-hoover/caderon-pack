@@ -1,10 +1,10 @@
 {
   "name": "go",
-  "version": "1.0.0",
-  "description": "Go development skills: backend workflow, concurrency patterns, error handling, and interface design",
+  "version": "1.1.0",
+  "description": "Go development skills: best practices, backend workflow, concurrency patterns, error handling, and interface design",
   "author": { "name": "Brent Hoover", "email": "brent@thebuddhalodge.com" },
   "homepage": "https://github.com/brent-hoover/caderon-pack",
   "repository": "https://github.com/brent-hoover/caderon-pack",
   "license": "MIT",
-  "keywords": ["go", "golang", "concurrency", "interfaces", "backend"]
+  "keywords": ["go", "golang", "concurrency", "interfaces", "backend", "best-practices"]
 }

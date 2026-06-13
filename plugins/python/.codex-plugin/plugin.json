@@ -1,0 +1,38 @@
+{
+  "name": "python",
+  "version": "1.0.0",
+  "description": "Python development best practices: types, error handling, async patterns, Pydantic V2, FastAPI, and project layout",
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": [
+    "python",
+    "fastapi",
+    "pydantic",
+    "async",
+    "backend",
+    "ai",
+    "llm"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Python",
+    "shortDescription": "Python best practices for types, async, and AI-first development.",
+    "longDescription": "Python packages Brent's Python development standards including type hygiene, Pydantic V2 models, FastAPI patterns, async-first I/O, error handling, and Claude/Anthropic API integration.",
+    "developerName": "Brent Hoover",
+    "category": "Development",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Review this Python error handling.",
+      "Help me model this domain with Pydantic.",
+      "Design a FastAPI endpoint for this use case."
+    ]
+  }
+}

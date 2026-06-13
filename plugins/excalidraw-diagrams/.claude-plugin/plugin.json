@@ -2,8 +2,9 @@
   "name": "excalidraw-diagrams",
   "version": "0.1.0",
   "description": "Generate and edit Excalidraw diagram files for architecture, network topology, and K8s infrastructure diagrams",
-  "author": {
-    "name": "Brent Hoover"
-  },
+  "author": { "name": "Brent Hoover", "email": "brent@thebuddhalodge.com" },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
   "keywords": ["excalidraw", "diagrams", "architecture", "kubernetes", "network"]
 }

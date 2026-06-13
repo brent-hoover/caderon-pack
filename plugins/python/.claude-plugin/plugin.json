@@ -1,0 +1,10 @@
+{
+  "name": "python",
+  "version": "1.0.0",
+  "description": "Python development best practices: types, error handling, async patterns, Pydantic V2, FastAPI, and project layout",
+  "author": { "name": "Brent Hoover", "email": "brent@thebuddhalodge.com" },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": ["python", "fastapi", "pydantic", "async", "backend", "ai", "llm"]
+}

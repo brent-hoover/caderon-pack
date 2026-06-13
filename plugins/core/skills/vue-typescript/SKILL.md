@@ -1,11 +1,6 @@
 ---
 name: vue-typescript
 description: Master Vue TypeScript - Type-safe Components, Generics, Type Inference, Advanced Patterns
-sasmp_version: "1.3.0"
-bonded_agent: 07-vue-typescript
-bond_type: PRIMARY_BOND
-version: "2.0.0"
-last_updated: "2025-01"
 ---
 
 # Vue TypeScript Skill
