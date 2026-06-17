@@ -1,0 +1,30 @@
+{
+  "name": "obsidian",
+  "version": "1.0.0",
+  "description": "Read and write your Obsidian vault from Claude Code \u2014 daily notes, quick capture, and vault browsing",
+  "author": {
+    "name": "Brent Hoover"
+  },
+  "keywords": [
+    "obsidian",
+    "notes",
+    "vault",
+    "capture",
+    "daily-notes"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Obsidian",
+    "shortDescription": "Read and write your Obsidian vault from Claude Code \u2014 daily notes, quick capture, and vault brow",
+    "longDescription": "Read and write your Obsidian vault from Claude Code \u2014 daily notes, quick capture, and vault browsing",
+    "developerName": "Brent Hoover",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Help me use Obsidian."
+    ]
+  }
+}
