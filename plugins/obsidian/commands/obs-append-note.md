@@ -1,5 +1,5 @@
 ---
-name: append-note
+name: obs-append-note
 description: Append content to an existing Obsidian note. Creates the note if it doesn't exist.
 ---
 

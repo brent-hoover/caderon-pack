@@ -1,5 +1,5 @@
 ---
-name: daily-note
+name: obs-daily-note
 description: Append content to today's Obsidian daily note (Journal/YYYY-MM-DD.md). Creates it if it doesn't exist.
 ---
 

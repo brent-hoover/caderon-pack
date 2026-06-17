@@ -1,5 +1,5 @@
 ---
-name: list-notes
+name: obs-list-notes
 description: List notes in an Obsidian vault folder. Defaults to the vault root.
 ---
 

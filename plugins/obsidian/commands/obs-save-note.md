@@ -1,5 +1,5 @@
 ---
-name: save-note
+name: obs-save-note
 description: Create or overwrite a note in the Obsidian vault. Argument is the vault-relative path.
 ---
 

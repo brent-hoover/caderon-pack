@@ -1,5 +1,5 @@
 ---
-name: capture
+name: obs-capture
 description: Quick-capture content to Obsidian Inbox.md. Optionally include a source URL.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: read-note
+name: obs-read-note
 description: Read a note from the Obsidian vault. Path is relative to vault root (e.g. Projects/my-note.md).
 ---
 
