@@ -1,6 +1,6 @@
 {
   "name": "obsidian",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Read and write your Obsidian vault from Claude Code — daily notes, quick capture, and vault browsing",
   "author": {
     "name": "Brent Hoover"
