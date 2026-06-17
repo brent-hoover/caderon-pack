@@ -37,6 +37,30 @@
       "description": "Ticket → PR execution workflow: clarify, test, implement, review-fix, PR, docs",
       "source": "./plugins/ticket-to-pr",
       "category": "workflow"
+    },
+    {
+      "name": "bdd-workflow",
+      "description": "BDD-enforced feature lifecycle: problem → Gherkin scenarios → design → plan → close, with mutation testing gate at close",
+      "source": "./plugins/bdd-workflow",
+      "category": "workflow"
+    },
+    {
+      "name": "excalidraw-diagrams",
+      "description": "Generate and edit Excalidraw diagram files for architecture, network topology, and K8s infrastructure diagrams",
+      "source": "./plugins/excalidraw-diagrams",
+      "category": "development"
+    },
+    {
+      "name": "journal",
+      "description": "Capture a work session as a dated engineering journal entry written in the operator's own voice, saved to a local folder or committed to a GitHub repo",
+      "source": "./plugins/journal",
+      "category": "workflow"
+    },
+    {
+      "name": "python",
+      "description": "Python development best practices: types, error handling, async patterns, Pydantic V2, FastAPI, and project layout",
+      "source": "./plugins/python",
+      "category": "development"
     }
   ]
 }
