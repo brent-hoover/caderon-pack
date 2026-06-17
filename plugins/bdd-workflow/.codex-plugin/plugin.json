@@ -1,0 +1,39 @@
+{
+  "name": "bdd-workflow",
+  "version": "1.0.0",
+  "description": "Guides Claude through the problem → BDD scenarios → design → plan → close feature lifecycle, enforcing Gherkin scenarios as the definition of done before planning begins",
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  },
+  "homepage": "https://github.com/brent-hoover/caderon-pack",
+  "repository": "https://github.com/brent-hoover/caderon-pack",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "bdd",
+    "gherkin",
+    "pytest-bdd",
+    "godog",
+    "feature-docs",
+    "start-bdd-feature",
+    "definition-of-done"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "BDD Driven Development",
+    "shortDescription": "BDD-enforced feature lifecycle: problem → scenarios → plan.",
+    "longDescription": "BDD Driven Development enforces Gherkin scenarios as the definition of done before planning begins. Packages problem, BDD design, plan, and close-bdd-feature lifecycle skills for Codex.",
+    "developerName": "Brent Hoover",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Start a BDD feature for this work.",
+      "Close out this completed feature.",
+      "Review this feature plan."
+    ]
+  }
+}
