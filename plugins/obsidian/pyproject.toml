@@ -1,0 +1,27 @@
+[project]
+name = "mcp-obsidian"
+version = "1.0.0"
+description = "MCP Server for reading and writing an Obsidian vault"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "uvicorn>=0.27.0",
+    "starlette>=0.36.0",
+]
+
+# RAG dependencies (re-enable when running Ollama locally):
+# chromadb>=1.5.1
+# markdown-it-py>=4.0.0
+# ollama>=0.6.1
+# tqdm>=4.67.3
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+quote-style = "double"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.1",
+]

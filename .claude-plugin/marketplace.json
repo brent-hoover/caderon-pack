@@ -61,6 +61,12 @@
       "description": "Python development best practices: types, error handling, async patterns, Pydantic V2, FastAPI, and project layout",
       "source": "./plugins/python",
       "category": "development"
+    },
+    {
+      "name": "obsidian",
+      "description": "Read and write your Obsidian vault from Claude Code — daily notes, quick capture, and vault browsing via MCP",
+      "source": "./plugins/obsidian",
+      "category": "productivity"
     }
   ]
 }
