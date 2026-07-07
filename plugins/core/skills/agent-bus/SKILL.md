@@ -36,6 +36,7 @@ printf '%s' "$LONG_BODY" | node "$SKILL_DIR"/scripts/bus.cjs send <recipient> -
 
 - `bus.cjs list` shows who is registered.
 - Use stdin (`-`) for anything multiline or containing quotes/code.
+- If a single-line message might contain words starting with `--` (e.g. `--force`), put `--` before it (`send <recipient> -- "<message>"`) or use stdin — otherwise those words are parsed as flags and dropped from the body.
 - Send only when the other agent needs the content: questions, handoffs,
   interface changes, completion notices. Never send bare acknowledgements —
   if your reply would just be "ok, got it", do not send it (anti-ping-pong).
@@ -68,6 +69,13 @@ node "$SKILL_DIR"/scripts/bus.cjs unregister <name>
 ```
 
 Stale registrations are harmless — the next session can `--force` the name.
+
+## Caution
+
+The doorbell types into the recipient's terminal. If that session is showing
+a permission dialog rather than an empty prompt when a message lands, the
+injected text plus Enter may interact with the dialog. Send bus messages only
+to sessions you trust, on this machine.
 
 ## Notes
 

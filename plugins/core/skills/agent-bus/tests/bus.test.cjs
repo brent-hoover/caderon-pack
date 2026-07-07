@@ -194,3 +194,22 @@ test('shell metacharacters passed via --from reach cmux argv as one literal elem
   assert.strictEqual(injectedLines.length, 0, 'shell expanded the body — execFile invariant broken');
   assert.ok(!fs.existsSync(path.join(busDir, '..', 'pwned')));
 });
+
+test('control chars in --from cannot inject a second doorbell line', () => {
+  run(['register', 'alpha']);
+  run(['register', 'beta'], { surface: 'SURF-B' });
+  const r = run(['send', 'beta', '--from', 'evil\nInjected second line', '--', 'hi']);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const calls = cmuxCalls();
+  const doorbell = calls[0][6];
+  assert.ok(!doorbell.includes('\n'), 'doorbell must stay one line');
+  assert.ok(doorbell.includes('Injected second line') === true || doorbell.includes('evil Injected second line'));
+  // inbox keeps the raw from value
+  const msg = JSON.parse(fs.readFileSync(path.join(busDir, 'inbox', 'beta.jsonl'), 'utf-8').trim().split('\n')[0]);
+  assert.strictEqual(msg.from, 'evil\nInjected second line');
+});
+
+test('read and unregister reject invalid names', () => {
+  assert.strictEqual(run(['read', '../etc/passwd']).status, 1);
+  assert.strictEqual(run(['unregister', 'bad/name']).status, 1);
+});

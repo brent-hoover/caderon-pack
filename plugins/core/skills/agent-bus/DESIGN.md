@@ -95,6 +95,10 @@ tests/bus.test.cjs}` in caderon-pack; core plugin bump to 1.5.0.
   recipient session appends to that text.
 - No inbox locking; lazy liveness (dead surfaces detected at send time).
 - Messages have no TTL/GC beyond read-truncation.
+- If a doorbell lands while the recipient session is showing a permission
+  dialog (not a prompt box), the injected characters and trailing Enter can
+  interact with that dialog (e.g. selecting/confirming an option). Same-user,
+  same-machine trust boundary; documented, not mitigated in v1.
 
 ## Out of scope (v1)
 

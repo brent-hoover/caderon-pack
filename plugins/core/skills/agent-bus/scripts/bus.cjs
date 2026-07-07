@@ -18,7 +18,7 @@ function fail(msg) {
 }
 
 function ensureDirs() {
-  fs.mkdirSync(INBOX_DIR, { recursive: true });
+  fs.mkdirSync(INBOX_DIR, { recursive: true, mode: 0o700 });
 }
 
 function loadRegistry() {
@@ -33,7 +33,7 @@ function loadRegistry() {
 function saveRegistry(reg) {
   ensureDirs();
   const tmp = REGISTRY_FILE + '.tmp-' + process.pid;
-  fs.writeFileSync(tmp, JSON.stringify(reg, null, 2) + '\n');
+  fs.writeFileSync(tmp, JSON.stringify(reg, null, 2) + '\n', { mode: 0o600 });
   fs.renameSync(tmp, REGISTRY_FILE);
 }
 
@@ -80,6 +80,7 @@ function cmdRegister(name, flags) {
 
 function cmdUnregister(name) {
   if (!name) fail('usage: bus.cjs unregister <name>');
+  if (!NAME_RE.test(name)) fail('invalid name: ' + name);
   const reg = loadRegistry();
   if (!reg[name]) fail("name '" + name + "' is not registered");
   delete reg[name];
@@ -126,10 +127,11 @@ function cmdSend(to, messageArgs, flags) {
     : messageArgs.join(' ');
 
   ensureDirs();
-  fs.appendFileSync(inboxFile(to), JSON.stringify({ from, to, ts: Date.now(), body }) + '\n');
+  fs.appendFileSync(inboxFile(to), JSON.stringify({ from, to, ts: Date.now(), body }) + '\n', { mode: 0o600 });
 
   // One line, no newlines: embedded newlines would submit a partial prompt.
-  const doorbell = "[agent-bus] New message from '" + from + "'. Read it with: node " +
+  const safeFrom = String(from).replace(/[\x00-\x1f\x7f]+/g, ' ');
+  const doorbell = "[agent-bus] New message from '" + safeFrom + "'. Read it with: node " +
     __filename + ' read ' + to + ' - then use the agent-bus skill to reply if needed.';
   const target = ['--workspace', recipient.workspace, '--surface', recipient.surface];
   try {
@@ -144,6 +146,7 @@ function cmdSend(to, messageArgs, flags) {
 
 function cmdRead(name, flags) {
   if (!name) fail('usage: bus.cjs read <name> [--peek] [--json]');
+  if (!NAME_RE.test(name)) fail('invalid name: ' + name);
   const messages = readInbox(name);
   if (flags.json) {
     console.log(JSON.stringify(messages, null, 2));
