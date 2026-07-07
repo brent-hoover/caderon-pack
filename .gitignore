@@ -107,3 +107,4 @@ dmypy.json
 .pytype/
 cython_debug/
 .md-review/
+.superpowers/
