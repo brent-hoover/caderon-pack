@@ -167,7 +167,8 @@ const flags = { force: false, json: false, peek: false, from: null };
 const positional = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === '--force') flags.force = true;
+  if (a === '--') { positional.push(...argv.slice(i + 1)); break; }
+  else if (a === '--force') flags.force = true;
   else if (a === '--json') flags.json = true;
   else if (a === '--peek') flags.peek = true;
   else if (a === '--from') { flags.from = argv[++i] || null; if (!flags.from) fail('--from requires a value'); }

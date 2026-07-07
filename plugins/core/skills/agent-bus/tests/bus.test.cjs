@@ -12,7 +12,7 @@ let busDir, fakeBin, cmuxLog;
 function makeFakeCmux(exitCode = 0) {
   fs.writeFileSync(
     path.join(fakeBin, 'cmux'),
-    '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$CMUX_LOG"\nexit ' + exitCode + '\n',
+    '#!/bin/sh\nfor a in "$@"; do printf \'%s\\n\' "$a" >> "$CMUX_LOG"; done\nprintf \'===\\n\' >> "$CMUX_LOG"\nexit ' + exitCode + '\n',
     { mode: 0o755 }
   );
 }
@@ -38,8 +38,10 @@ function registry() {
 }
 
 function cmuxCalls() {
-  try { return fs.readFileSync(cmuxLog, 'utf-8').trim().split('\n').filter(Boolean); }
-  catch (e) { return []; }
+  try {
+    return fs.readFileSync(cmuxLog, 'utf-8').split('===\n').filter(s => s.trim())
+      .map(block => block.split('\n').filter(Boolean));
+  } catch (e) { return []; }
 }
 
 beforeEach(() => {
@@ -113,9 +115,10 @@ test('send appends to inbox and doorbells via cmux send + send-key enter', () =>
   assert.strictEqual(msg.body, 'hello there');
   const calls = cmuxCalls();
   assert.strictEqual(calls.length, 2);
-  assert.match(calls[0], /^send --workspace WS-B --surface SURF-B -- \[agent-bus\] New message from 'alpha'/);
-  assert.match(calls[0], new RegExp('Read it with: node .*bus\\.cjs read beta'));
-  assert.match(calls[1], /^send-key --workspace WS-B --surface SURF-B -- enter$/);
+  assert.deepStrictEqual(calls[0].slice(0, 6), ['send', '--workspace', 'WS-B', '--surface', 'SURF-B', '--']);
+  assert.match(calls[0][6], /^\[agent-bus\] New message from 'alpha'/);
+  assert.match(calls[0][6], new RegExp('Read it with: node .*bus\\.cjs read beta'));
+  assert.deepStrictEqual(calls[1], ['send-key', '--workspace', 'WS-B', '--surface', 'SURF-B', '--', 'enter']);
 });
 
 test('send with unregistered recipient fails', () => {
@@ -166,4 +169,28 @@ test('read --peek does not consume; empty inbox reports none', () => {
   run(['read', 'beta'], { surface: 'SURF-B' });
   const empty = run(['read', 'beta'], { surface: 'SURF-B' });
   assert.match(empty.stdout, /no messages/i);
+});
+
+test('-- ends option parsing so flag-like words stay in the body', () => {
+  run(['register', 'alpha']);
+  run(['register', 'beta'], { surface: 'SURF-B' });
+  const r = run(['send', 'beta', '--', 'use', '--json', 'here']);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const msg = JSON.parse(fs.readFileSync(path.join(busDir, 'inbox', 'beta.jsonl'), 'utf-8').trim().split('\n')[0]);
+  assert.strictEqual(msg.body, 'use --json here');
+});
+
+test('shell metacharacters passed via --from reach cmux argv as one literal element (no shell)', () => {
+  run(['register', 'alpha']);
+  run(['register', 'beta'], { surface: 'SURF-B' });
+  const evil = "x'; echo INJECTED >> \"$CMUX_LOG\"; $(touch pwned) `id` && | > /tmp/x #";
+  const r = run(['send', 'beta', 'hi', '--from', evil]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const calls = cmuxCalls();
+  const doorbell = calls[0][6];
+  assert.ok(doorbell.includes(evil), 'literal metacharacter string did not survive intact in cmux argv');
+  const log = fs.readFileSync(cmuxLog, 'utf-8');
+  const injectedLines = log.split('\n').filter(l => l === 'INJECTED');
+  assert.strictEqual(injectedLines.length, 0, 'shell expanded the body — execFile invariant broken');
+  assert.ok(!fs.existsSync(path.join(busDir, '..', 'pwned')));
 });
