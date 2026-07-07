@@ -106,3 +106,4 @@ dmypy.json
 .pyre/
 .pytype/
 cython_debug/
+.md-review/
