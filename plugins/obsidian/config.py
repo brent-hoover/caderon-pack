@@ -1,11 +1,15 @@
-OBSIDIAN_VAULT_PATH = "~/Documents/Obsidian Vault"
+OBSIDIAN_VAULT_PATH = "~/Documents/Obsidian Vault/Primary"
 
 # Daily notes
-DAILY_NOTE_FORMAT = "%Y-%m-%d"   # strftime format for the filename
-DAILY_NOTES_FOLDER = "Journal"   # folder inside vault (Obsidian: Settings → Daily Notes → New file location)
+DAILY_NOTE_FORMAT = "%Y-%m-%d"  # strftime format for the filename
+DAILY_NOTES_FOLDER = "Journal"  # folder inside vault (Obsidian: Settings → Daily Notes → New file location)
 
 # Inbox (quick capture dumps here)
-INBOX_NOTE = "Inbox.md"          # path relative to vault root
+INBOX_NOTE = "Inbox.md"  # path relative to vault root
+
+# Work logs
+WORK_LOGS_FOLDER = "Work Logs"  # folder inside vault
+WORK_LOG_DATE_FORMAT = "%Y-%m-%d"
 
 # Folders to exclude from list_notes
 EXCLUDE_DIRS = [".obsidian", ".trash", "Templates"]
