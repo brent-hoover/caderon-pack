@@ -22,7 +22,30 @@ def _safe_path(relative_path: str) -> Path:
     return resolved
 
 
-@mcp.tool(description="Read a note from the Obsidian vault. Path is relative to vault root (e.g. 'Projects/my-note.md').")
+def _work_logs_root(project: str) -> Path:
+    root = _safe_path(config.WORK_LOGS_FOLDER).resolve()
+    project_dir = project.strip().strip("/")
+    base = (root / project_dir).resolve() if project_dir else root
+    try:
+        base.relative_to(root)
+    except ValueError:
+        raise ValueError(f"Project path outside work logs folder: {project}")
+    return base
+
+
+def _work_log_path(entry_date: str, project: str) -> tuple[Path, str]:
+    log_date = (
+        date.fromisoformat(entry_date).strftime(config.WORK_LOG_DATE_FORMAT)
+        if entry_date
+        else date.today().strftime(config.WORK_LOG_DATE_FORMAT)
+    )
+    target = (_work_logs_root(project) / f"{log_date}.md").resolve()
+    return target, str(target.relative_to(VAULT.resolve()))
+
+
+@mcp.tool(
+    description="Read a note from the Obsidian vault. Path is relative to vault root (e.g. 'Projects/my-note.md')."
+)
 async def read_note(path: str) -> str:
     p = _safe_path(path)
     if not p.exists():
@@ -30,7 +53,9 @@ async def read_note(path: str) -> str:
     return p.read_text()
 
 
-@mcp.tool(description="Save (create or overwrite) a note. Path is relative to vault root. Creates parent folders as needed.")
+@mcp.tool(
+    description="Save (create or overwrite) a note. Path is relative to vault root. Creates parent folders as needed."
+)
 async def save_note(path: str, content: str) -> str:
     p = _safe_path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -60,6 +85,40 @@ async def daily_note(content: str) -> str:
         with open(p, "a") as f:
             f.write(f"\n\n{content}")
     return f"Added to daily note: {path}"
+
+
+@mcp.tool(description="Append an end-of-day session entry to Work Logs[/project]/YYYY-MM-DD.md.")
+async def work_log(content: str, project: str = "", entry_date: str = "") -> str:
+    p, relative_path = _work_log_path(entry_date, project)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    entry = content.strip()
+    if p.exists():
+        with open(p, "a") as f:
+            f.write(f"\n\n---\n\n{entry}\n")
+    else:
+        p.write_text(f"# {p.stem} Work Log\n\n{entry}\n")
+    return f"Appended work log: {relative_path}"
+
+
+@mcp.tool(
+    description="Read one or more work logs from Work Logs[/project]. Reads a date when entry_date is set, otherwise newest logs."
+)
+async def read_work_logs(project: str = "", entry_date: str = "", limit: int = 5) -> str:
+    if entry_date:
+        p, relative_path = _work_log_path(entry_date, project)
+        if not p.exists():
+            return f"Work log not found: {relative_path}"
+        return p.read_text()
+
+    base = _work_logs_root(project)
+    if not base.exists():
+        return f"No work logs found under {config.WORK_LOGS_FOLDER}"
+
+    logs = sorted(base.glob("*.md"), reverse=True)[:limit]
+    if not logs:
+        return f"No work logs found under {base.relative_to(VAULT.resolve())}"
+
+    return "\n\n---\n\n".join(f"<!-- {p.relative_to(VAULT.resolve())} -->\n{p.read_text()}" for p in logs)
 
 
 @mcp.tool(description="Dump raw content to the inbox note for later processing. Optionally include a source URL.")

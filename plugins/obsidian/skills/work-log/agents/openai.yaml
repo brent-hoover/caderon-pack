@@ -1,0 +1,4 @@
+interface:
+  display_name: "Work Log"
+  short_description: "Write end-of-day work logs to Obsidian."
+  default_prompt: "Write an Obsidian work log for today."
