@@ -1,7 +1,7 @@
 {
   "name": "core",
-  "version": "1.5.0",
-  "description": "Brent's always-on skills: code explanation, conventional commits, codebase visualization, code quality, git, git worktrees, Vue/TypeScript, user stories, BDD specs, SQLite/Drizzle, Agent Teams orchestration, browser-based markdown review, and a cross-session agent message bus",
+  "version": "1.6.0",
+  "description": "Brent's always-on skills: code explanation, conventional commits, codebase visualization, code quality, git, git worktrees, Vue/TypeScript, user stories, BDD specs, SQLite/Drizzle, Agent Teams orchestration, browser-based markdown review, a cross-session agent message bus, and session retrospectives",
   "author": {
     "name": "Brent Hoover",
     "email": "brent@thebuddhalodge.com"
@@ -21,6 +21,7 @@
     "user-stories",
     "agent-teams",
     "markdown-review",
-    "agent-bus"
+    "agent-bus",
+    "retrospective"
   ]
 }
