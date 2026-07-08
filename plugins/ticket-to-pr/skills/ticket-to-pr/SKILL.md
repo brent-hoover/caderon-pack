@@ -46,23 +46,13 @@ This applies to every step below.
    (e.g. "Add user auth endpoint" → `add-user-auth-endpoint`). Then:
 
    ```bash
-   repo_root=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
-   grep -qF '.worktrees' "$repo_root/.gitignore" 2>/dev/null \
-     || printf '\n# git worktrees\n.worktrees/\n' >> "$repo_root/.gitignore"
-   base=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
-   base="${base:-main}"
-   git fetch origin "$base" --quiet || true
-   git worktree add -b "feat/<slug>" "$repo_root/.worktrees/feat-<slug>" "origin/$base"
+   repo_root=$(git rev-parse --show-toplevel)
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/create_worktree.py" \
+     "$repo_root/.worktrees/feat-<slug>" "feat/<slug>"
    ```
 
-   Verify before continuing:
-
-   ```bash
-   ls "$repo_root/.worktrees/feat-<slug>"
-   ```
-
-   If this fails, stop and report — do not proceed to step 6. Record the absolute path
-   `$repo_root/.worktrees/feat-<slug>` as `worktreePath` and `$base` as `base` for the workflow args.
+   If this fails (non-zero exit), stop and report — do not proceed to step 6. Record the absolute path
+   `$repo_root/.worktrees/feat-<slug>` as `worktreePath` and the detected base branch as `base` for the workflow args.
 6. **Confirm + launch.** Show the user: ticket title, the slug/branch, worktree path, and the three
    verify commands. On their go-ahead, launch the Workflow tool with
    `scriptPath: ${CLAUDE_PLUGIN_ROOT}/workflows/ticket-to-pr.mjs` and

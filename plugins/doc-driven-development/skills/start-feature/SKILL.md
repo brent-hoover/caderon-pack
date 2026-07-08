@@ -31,22 +31,12 @@ ask: "What's the feature slug? Use kebab-case — e.g. `user-auth`, `billing-exp
 **2. Create the worktree.**
 
 ```bash
-repo_root=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
-grep -qF '.worktrees' "$repo_root/.gitignore" 2>/dev/null \
-  || printf '\n# git worktrees\n.worktrees/\n' >> "$repo_root/.gitignore"
-base=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
-base="${base:-main}"
-git fetch origin "$base" --quiet || true
-git worktree add -b "feat/<slug>" "$repo_root/.worktrees/feat-<slug>" "origin/$base"
+repo_root=$(git rev-parse --show-toplevel)
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/create_worktree.py" \
+  "$repo_root/.worktrees/feat-<slug>" "feat/<slug>"
 ```
 
-Verify before continuing:
-
-```bash
-ls "$repo_root/.worktrees/feat-<slug>"
-```
-
-If this fails, stop and report the error — do not proceed to step 3. Report the absolute worktree path to the user.
+If this fails (non-zero exit), stop and report the error — do not proceed to step 3. Report the absolute worktree path to the user.
 
 **3. Confirm or create the doc root.**
 

@@ -1,9 +1,9 @@
 {
   "name": "obsidian",
-  "version": "1.2.0",
-  "description": "Read and write your Obsidian vault from Claude Code — daily notes, quick capture, vault browsing, and work logs",
+  "version": "1.3.0",
+  "description": "Read and write your Obsidian vault from Claude Code — daily notes, quick capture, vault browsing, work logs, and Raindrop digest",
   "author": {
     "name": "Brent Hoover"
   },
-  "keywords": ["obsidian", "notes", "vault", "capture", "daily-notes"]
+  "keywords": ["obsidian", "notes", "vault", "capture", "daily-notes", "work-log", "raindrop"]
 }
