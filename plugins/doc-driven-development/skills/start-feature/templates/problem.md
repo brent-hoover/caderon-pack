@@ -16,9 +16,9 @@ paragraphs. Orient someone who's never seen this problem before.>
 
 ## Problem
 
-<What specifically is wrong, missing, or needed? Be concrete. Keep solutions out entirely — no
-"we should…", no "simplest approach". That's the design doc's job. State only what's true today and
-what's required.>
+<What specifically is wrong, missing, or needed? Be concrete, and keep it tight — a few sentences
+to a short paragraph. Keep solutions out entirely — no "we should…", no "simplest approach". That's
+the design doc's job. State only what's true today and what's required.>
 
 ## Complexity drivers
 

@@ -24,6 +24,12 @@ with fresh eyes and report findings; you do **not** edit files.
 
 Evaluate against the template's sections:
 
+- **Clarity & concision** — Push back on wordy or needlessly complicated prose. Quote and flag:
+  sentences that survive the *delete test* (removable without losing information) or restate an
+  earlier one; filler ("it is important to note", "in order to", hedging like "perhaps"); vague
+  references ("the relevant component") where a concrete file/module/symbol exists; and invented
+  terminology — the doc must use the project's existing vocabulary (from code, docs, and sibling
+  feature docs), not coin new terms.
 - **Coverage** — Do the steps, taken together, actually deliver the design? Flag design elements
   with no corresponding step, and steps that implement things the design never called for.
 - **Overview** — Does it explain what's built, in what order, and *why that order*?

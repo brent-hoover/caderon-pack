@@ -26,6 +26,12 @@ edit files.
 
 Evaluate against the template's sections and against the problem doc:
 
+- **Clarity & concision** — Push back on wordy or needlessly complicated prose. Quote and flag:
+  sentences that survive the *delete test* (removable without losing information) or restate an
+  earlier one; filler ("it is important to note", "in order to", hedging like "perhaps"); vague
+  references ("the relevant component") where a concrete file/module/symbol exists; and invented
+  terminology — the doc must use the project's existing vocabulary (from code, docs, and sibling
+  feature docs), not coin new terms.
 - **Solves the problem** — Does the Approach actually satisfy the problem's Requirements and
   Success criteria? Map approach → requirements; flag any requirement left unaddressed.
 - **Summary** — Does it convey the approach standalone?

@@ -19,6 +19,23 @@ Each doc is auto-reviewed by a dedicated Opus reviewer subagent before it reache
 
 ---
 
+## Writing standard (applies to every doc)
+
+Every doc you write in this workflow must be clear, concise, and grounded:
+
+- **Ground it in real code.** Read the files the doc touches and refer to actual modules, symbols,
+  and file paths. Don't assume behavior — if unsure, check. Any solution must be grounded in
+  existing code where it exists.
+- **Don't invent terminology.** Use the project's existing vocabulary (from code, docs, and sibling
+  feature docs) rather than coining new terms. Define any jargon or acronym on first use.
+- **Cut what you can.** After drafting, run the *delete test* on every sentence: if it can go
+  without losing information, cut it. Delete filler ("it is important to note", "in order to",
+  hedging like "perhaps" / "it might be worth"). One idea per sentence; plain words over long ones.
+- **Be concrete.** Name the actual file, module, or symbol — not "the relevant component". The user
+  rejects docs that aren't clear.
+
+---
+
 ## Setup
 
 Before entering any phase:
@@ -38,11 +55,13 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/create_worktree.py" \
 
 If this fails (non-zero exit), stop and report the error — do not proceed to step 3. Report the absolute worktree path to the user.
 
-**3. Confirm or create the doc root.**
+**3. Detect the doc root** by reading the project's `CLAUDE.md` with the Read tool:
 
-The doc root should be `$PROJECT_ROOT/feature-work/`. DO NOT WRITE TO superpower, .claude or any other directory.
+- Mentions `feature-work/` → doc root is `feature-work/`
+- Otherwise → doc root is `docs/`
 
-If that directory does not exist, create it. ALL FEATURE WORK DOCS NEED TO GO IN THE `$DOC_ROOT`.
+DO NOT WRITE TO superpowers, .claude, or any directory outside the detected doc root. ALL FEATURE
+WORK DOCS GO IN `<doc-root>/<slug>/`. If the directory does not exist, create it.
 
 Announce: `Writing docs to <doc-root>/<slug>/`
 
@@ -96,6 +115,9 @@ template yourself. If not then do these steps
 
 **Important** The problem doc is for stating the **problem**. It is not a solution, nor a design. No premature solutionizing
 
+Apply the **Writing standard** (above). For the problem doc specifically, focus wherever possible
+on the benefit to the user of solving the problem.
+
 Ask these questions **one at a time**. Wait for the complete answer before asking the next.
 
 1. "What's the human-readable name for this feature?"
@@ -142,7 +164,8 @@ Revise per the user's feedback until approved, re-writing `<doc-root>/<slug>/pro
 Announce: **[PHASE: DESIGN]**
 
 Read relevant project files — existing modules, patterns, anything the feature will touch —
-to ground the design in real context before proposing approaches.
+to ground the design in real context before proposing approaches. Every solution you propose
+**must** be grounded in existing code where it exists — don't assume; if unsure, double-check.
 
 **Propose three solutions across the effort spectrum**, so the trade-off is explicit:
 
@@ -169,7 +192,8 @@ Draft `design.md` from the template. The **Alternatives considered** section mus
 solutions (Simplest, Complete, Optimal) and end with the decision and rationale. Set
 `problem: ./problem.md` in frontmatter.
 
-Write the draft to `<doc-root>/<slug>/design.md`.
+Apply the **Writing standard** (above) before writing the draft to
+`<doc-root>/<slug>/design.md`.
 
 **Review step** (see *Automated review*): hand the file to `design-reviewer`, apply its
 Critical/Should-fix items, and re-write the doc.
@@ -196,7 +220,8 @@ Draft `plan.md` from the template. The plan must contain:
 
 Set frontmatter to `design: ./design.md` (or `design: ./problem.md` if design was skipped).
 
-Write the draft to `<doc-root>/<slug>/plan.md`.
+Apply the **Writing standard** (above) before writing the draft to
+`<doc-root>/<slug>/plan.md`.
 
 **Review step** (see *Automated review*): hand the file to `plan-reviewer`, apply its
 Critical/Should-fix items, and re-write the doc.
