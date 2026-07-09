@@ -17,8 +17,8 @@ roughly what we're going to build.>
 
 ## Approach
 
-<The chosen design, in enough detail to implement against. Cover the main components, their
-responsibilities, and how they interact. Diagrams welcome.>
+<The chosen design, in enough detail to implement against. Cover only the components that matter —
+their responsibilities and how they interact. Diagrams welcome.>
 
 ## Interfaces
 

@@ -24,6 +24,12 @@ eyes and report findings; you do **not** edit files.
 
 Evaluate against the template's sections:
 
+- **Clarity & concision** — Push back on wordy or needlessly complicated prose. Quote and flag:
+  sentences that survive the *delete test* (removable without losing information) or restate an
+  earlier one; filler ("it is important to note", "in order to", hedging like "perhaps"); vague
+  references ("the relevant component") where a concrete file/module/symbol exists; and invented
+  terminology — the doc must use the project's existing vocabulary (from code, docs, and sibling
+  feature docs), not coin new terms.
 - **Context** — Would someone new understand the current situation? Is it oriented in the real
   system, or vague hand-waving?
 - **Problem** — Is it concrete and specific? Flag any **solution leaking in** anywhere in the doc —
@@ -39,6 +45,7 @@ Evaluate against the template's sections:
   unmeasurable criteria.
 - **Open questions** — Are the listed questions the real blockers? Are there obvious unasked
   questions that block design?
+
 
 ## Output contract
 

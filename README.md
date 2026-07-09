@@ -84,6 +84,9 @@ The `start-feature` skill auto-detects your project's doc root from `CLAUDE.md`:
 - Projects with `feature-work/` convention → writes to `feature-work/<slug>/`
 - All others → writes to `docs/<slug>/`
 
+Every generated doc is held to a **writing standard** — grounded in real code, no invented
+terminology, and cut to what's needed (delete test, no filler). The reviewer agents enforce it.
+
 During implementation, punted work is logged to `deferred.md`. When a feature is complete, run
 `/close-feature`: it revisits `deferred.md` (do now / keep deferred / permanently drop), writes
 `completed.md`, and moves the directory to `<doc-root>/archived/<slug>/`.
