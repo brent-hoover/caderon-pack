@@ -108,3 +108,6 @@ dmypy.json
 cython_debug/
 .md-review/
 .superpowers/
+# roborev snapshots
+/.roborev
+.clearance/
