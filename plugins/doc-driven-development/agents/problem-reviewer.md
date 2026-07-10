@@ -29,22 +29,24 @@ Evaluate against the template's sections:
   earlier one; filler ("it is important to note", "in order to", hedging like "perhaps"); vague
   references ("the relevant component") where a concrete file/module/symbol exists; and invented
   terminology — the doc must use the project's existing vocabulary (from code, docs, and sibling
-  feature docs), not coin new terms.
+  feature docs), not coin new terms. The template's per-section length hints (`≤ N sentences / ≤ 1
+  para`) are guidance: a section running well past its hint is a **Should-fix at most** — never
+  Critical, never blocking.
 - **Context** — Would someone new understand the current situation? Is it oriented in the real
   system, or vague hand-waving?
 - **Problem** — Is it concrete and specific? Flag any **solution leaking in** anywhere in the doc —
   it must describe what's wrong/missing, not how to fix it (no "simplest solution", no "we should…").
-  Solutioning belongs in the design doc.
+  Solutioning belongs in the design doc. Likewise flag build steps or scope boundaries — those
+  belong in design.md/plan.md, not here.
 - **Complexity drivers** (Scale, Concurrency, Failure modes, Cross-cutting policies) — Each must be
   stated as a **fact about the problem** or be marked `N/A — <why>`. Flag any phrased as a solution,
   hand-waved, missing, or where an `N/A` looks wrong for this system.
 - **Constraints / Requirements** — Are requirements **observable and checkable**, or fuzzy
   aspirations? Flag unfalsifiable requirements.
-- **Non-goals** — Is scope explicitly bounded? Missing non-goals are a common source of scope creep.
 - **Success criteria** — Can you objectively tell when this is done? Flag subjective or
   unmeasurable criteria.
-- **Open questions** — Are the listed questions the real blockers? Are there obvious unasked
-  questions that block design?
+- **Open questions** — Are the listed questions the real blockers for *design*? Are there obvious
+  unasked questions that block design? (Scope boundaries live in design.md, not here.)
 
 
 ## Output contract

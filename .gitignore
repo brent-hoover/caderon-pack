@@ -108,3 +108,4 @@ dmypy.json
 cython_debug/
 .md-review/
 .superpowers/
+.clearance-rendered-preview-*/

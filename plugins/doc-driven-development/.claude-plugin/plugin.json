@@ -1,6 +1,6 @@
 {
   "name": "doc-driven-development",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Guides Claude through the problem → design → plan → close feature lifecycle, with Opus reviewer agents vetting each doc",
   "author": {
     "name": "Brent Hoover",

@@ -31,7 +31,12 @@ Evaluate against the template's sections and against the problem doc:
   earlier one; filler ("it is important to note", "in order to", hedging like "perhaps"); vague
   references ("the relevant component") where a concrete file/module/symbol exists; and invented
   terminology — the doc must use the project's existing vocabulary (from code, docs, and sibling
-  feature docs), not coin new terms.
+  feature docs), not coin new terms. The template's per-section length hints (`≤ N sentences / ≤ 1
+  para`) are guidance: a section running well past its hint is a **Should-fix at most** — never
+  Critical, never blocking.
+- **No cross-doc leak** — Flag content that belongs in a sibling doc: the problem restated at length
+  instead of linked (→ problem.md), or ordered build steps (→ plan.md). This doc owns the solution
+  shape, not the need or the execution sequence.
 - **Solves the problem** — Does the Approach actually satisfy the problem's Requirements and
   Success criteria? Map approach → requirements; flag any requirement left unaddressed.
 - **Summary** — Does it convey the approach standalone?
