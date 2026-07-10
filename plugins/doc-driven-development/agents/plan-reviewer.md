@@ -29,7 +29,11 @@ Evaluate against the template's sections:
   earlier one; filler ("it is important to note", "in order to", hedging like "perhaps"); vague
   references ("the relevant component") where a concrete file/module/symbol exists; and invented
   terminology — the doc must use the project's existing vocabulary (from code, docs, and sibling
-  feature docs), not coin new terms.
+  feature docs), not coin new terms. The template's per-section length hints (`≤ N sentences / ≤ 1
+  para`) are guidance: a section running well past its hint is a **Should-fix at most** — never
+  Critical, never blocking.
+- **No cross-doc leak** — Flag re-justification of the problem or re-explanation of the design; the
+  plan links those docs, it doesn't restate them. Scope boundaries live in design.md, not here.
 - **Coverage** — Do the steps, taken together, actually deliver the design? Flag design elements
   with no corresponding step, and steps that implement things the design never called for.
 - **Overview** — Does it explain what's built, in what order, and *why that order*?
@@ -44,8 +48,11 @@ Evaluate against the template's sections:
   check). Flag any Verify that is missing, vague ("make sure it works"), or not actually observable.
 - **Steps — What/Why** — Is "What" concrete (files, behavior) and "Why" tied to unblocking
   something?
+- **Steps — Status/Tasks** — Every step must carry a **Status** marker, set to `☐` at draft time
+  (implementation flips it to `☑` when Verify passes) — flag any step missing it or pre-marked `☑`.
+  **Tasks** is optional: present only for multi-part steps, and must be real sub-tasks, not a
+  restatement of What. Don't flag a single-action step for omitting Tasks.
 - **Rollback** — Is there a credible path back to a safe state mid-way?
-- **Out of scope** — Explicitly bounded.
 
 ## Output contract
 

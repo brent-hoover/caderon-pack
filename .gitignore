@@ -108,6 +108,7 @@ dmypy.json
 cython_debug/
 .md-review/
 .superpowers/
+.clearance-rendered-preview-*/
 # roborev snapshots
 /.roborev
 .clearance/

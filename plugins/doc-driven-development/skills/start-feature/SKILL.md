@@ -5,13 +5,13 @@ description: >
   Use when starting any new feature, initiative, or significant piece of work.
   Trigger phrases: "start a feature", "new feature", "/start-feature", "/start-feature <slug>".
   Claude drives content generation; user reviews and approves each doc before advancing.
-version: 1.2.0
+version: 1.4.0
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
 # start-feature
 
-Four-phase state machine: PROBLEM → DESIGN (optional) → PLAN → DONE. Each phase produces a
+Four-phase state machine: PROBLEM → DESIGN → PLAN → IMPLEMENT → VERIFY → DONE. Each phase produces a
 fully-populated doc. No `<placeholder>` text is left for the user to fill in.
 
 Each doc is auto-reviewed by a dedicated Opus reviewer subagent before it reaches the user — see
@@ -33,6 +33,10 @@ Every doc you write in this workflow must be clear, concise, and grounded:
   hedging like "perhaps" / "it might be worth"). One idea per sentence; plain words over long ones.
 - **Be concrete.** Name the actual file, module, or symbol — not "the relevant component". The user
   rejects docs that aren't clear.
+- **Stay in your lane.** Each doc has one job (stated in the contract header at the top of its
+  template): problem = the *need*, design = the *solution shape* (and the sole home for scope
+  boundaries), plan = the *ordered execution*. Don't restate a sibling doc — link it. Content that
+  belongs elsewhere gets flagged by the reviewer.
 
 ---
 
@@ -81,7 +85,7 @@ git config user.name  # owner
 - `${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/problem.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/design.md`
 - `${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/plan.md`
-
+- `${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/completed.md`
 ---
 
 ## Automated review (runs in every phase)
@@ -106,14 +110,36 @@ The **review step** referenced in each phase below means:
 
 ---
 
+## Presenting docs for review (runs in every phase)
+
+Each phase ends by presenting its doc for the user to approve. **If the `markdown-review` skill is
+available**, prefer it over dumping raw markdown in the terminal — it renders the doc in the
+browser with inline comments and an Approve button, and returns feedback in an events file.
+
+- **Start the server once** per session, the first time you present a doc. Reuse it for all three
+  docs — each phase adds its doc, so the sidebar accumulates problem → design → plan.
+- On each present step: serve (or edit-in-place, it live-reloads) the doc, share the full URL, and
+  ask in the terminal as described in the phase. Next turn, read the skill's events file for
+  `comment`/`approve` events; **the terminal message is primary** — merge the two. An `approve`
+  event with no later edits to that doc satisfies the approval gate without re-asking.
+- **If `markdown-review` is not available**, fall back to presenting the doc inline in the terminal.
+
+This is the **present step** referenced in each phase below. It does not replace the phase's
+approval question — it's how the doc reaches the user.
+
+---
+
 ## PHASE: PROBLEM
+It is best if the operator directly fills this out for themselves so ask if they want to do that first
+If so copy the template in and open the doc with `clearance <name-of-copied-in-template>`
+
 
 Announce: **[PHASE: PROBLEM]**
 
 If start-feature was launched after a discussion of the problem, then use that to fill out the problem
 template yourself. If not then do these steps
 
-**Important** The problem doc is for stating the **problem**. It is not a solution, nor a design. No premature solutionizing
+**Important** The problem doc is for stating the **problem**. It is not for a solution, nor a design. No premature solutionizing
 
 Apply the **Writing standard** (above). For the problem doc specifically, focus wherever possible
 on the benefit to the user of solving the problem.
@@ -130,8 +156,10 @@ Ask these questions **one at a time**. Wait for the complete answer before askin
    - **Failure modes**: what's the real-world consequence if this goes wrong?
    - **Cross-cutting policies**: does it involve PII, auth, secrets, observability?"
 5. "What are the hard constraints? (performance, environment, integrations, timeline)"
-6. "What's explicitly out of scope?"
-7. "How will we know this is done? What does success look like?"
+6. "How will we know this is done? What does success look like?"
+
+(Scope boundaries — what's out of scope — are captured in the DESIGN phase, in design.md's
+"Out of scope" section. Don't ask for them here.)
 
 After collecting answers, read any related existing files (feature docs, source modules) to
 ground the draft in real project context.
@@ -144,8 +172,8 @@ Write the draft to `<doc-root>/<slug>/problem.md`.
 **Review step** (see *Automated review*): hand the file to `problem-reviewer`, apply its
 Critical/Should-fix items, and re-write the doc.
 
-Present the reviewed draft to the user along with a 2–4 line summary of what the reviewer flagged
-and what you changed. Ask: "Does this problem.md look right? Any changes?"
+Present the reviewed draft to the user (the **present step** — see *Presenting docs for review*),
+along with a 2–4 line summary of what the reviewer flagged and what you changed. Ask: "Does this problem.md look right? Any changes?"
 
 Revise per the user's feedback until approved, re-writing `<doc-root>/<slug>/problem.md` each time.
 
@@ -187,6 +215,8 @@ Then ask, one at a time:
 1. "Any interfaces or APIs this design must expose or conform to?"
 2. "Any data that needs to persist, and if so in what shape?"
 3. "Any risks or assumptions to call out explicitly?"
+4. "What's explicitly out of scope for this feature?" (feeds design.md's "Out of scope" — the single
+   home for scope boundaries across all three docs)
 
 Draft `design.md` from the template. The **Alternatives considered** section must include all three
 solutions (Simplest, Complete, Optimal) and end with the decision and rationale. Set
@@ -198,8 +228,8 @@ Apply the **Writing standard** (above) before writing the draft to
 **Review step** (see *Automated review*): hand the file to `design-reviewer`, apply its
 Critical/Should-fix items, and re-write the doc.
 
-Present the reviewed draft to the user along with a 2–4 line summary of what the reviewer flagged
-and what you changed. Ask: "Does this design.md look right? Any changes?"
+Present the reviewed draft to the user (the **present step** — see *Presenting docs for review*),
+along with a 2–4 line summary of what the reviewer flagged and what you changed. Ask: "Does this design.md look right? Any changes?"
 
 Revise per the user's feedback until approved, re-writing `<doc-root>/<slug>/design.md` each time.
 
@@ -214,7 +244,9 @@ Draft `plan.md` from the template. The plan must contain:
 - **Overview**: what we're implementing, in what order, why that order (one paragraph)
 - **Preconditions**: approved design, resolved open questions, dependencies available
 - **Steps**: ordered, each sized for one PR or session, each with:
+  - **Status**: `☐` at draft time — implementation flips it to `☑` when Verify passes
   - **What**: concrete change — files touched, behavior added/modified
+  - **Tasks** (optional): sub-tasks for multi-part steps; omit for single-action steps
   - **Why**: what this step unblocks or achieves
   - **Verify**: how to confirm it worked (tests, command, manual check)
 
@@ -226,14 +258,14 @@ Apply the **Writing standard** (above) before writing the draft to
 **Review step** (see *Automated review*): hand the file to `plan-reviewer`, apply its
 Critical/Should-fix items, and re-write the doc.
 
-Present the reviewed draft to the user along with a 2–4 line summary of what the reviewer flagged
-and what you changed. Ask: "Does this plan.md look right? Any changes?"
+Present the reviewed draft to the user (the **present step** — see *Presenting docs for review*),
+along with a 2–4 line summary of what the reviewer flagged and what you changed. Ask: "Does this plan.md look right? Any changes?"
 
 Revise per the user's feedback until approved, re-writing `<doc-root>/<slug>/plan.md` each time.
 
 ---
 
-## PHASE: DONE
+## PHASE: COMPLETED
 
 Announce: **[PHASE: DONE]**
 
