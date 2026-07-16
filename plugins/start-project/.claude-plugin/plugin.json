@@ -1,0 +1,9 @@
+{
+  "name": "start-project",
+  "version": "0.1.0",
+  "description": "Greenfield project planning: vision → stack → architecture → data models → stories → plan → scaffold, ending in a repo with green architecture tests and red BDD specs",
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  }
+}

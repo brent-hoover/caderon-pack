@@ -1,0 +1,18 @@
+# Machine-readable architecture rules. Source of truth for generated
+# architecture tests (Python: tests/test_architecture.py, Go:
+# architecture_test.go). Module names are language-neutral; paths are
+# derived at scaffold time (Python: src/<root>/<module>, Go:
+# internal/<module>).
+version: 1
+language: <python | go | other>   # matches stack.md; `other` = docs-only, no scaffold
+root: <package-or-module-name — for python/go a valid identifier: underscores not hyphens for Python, lowercase for a Go module dir; for `other`, a lowercase kebab/snake slug>
+modules:
+  - name: <module>          # python/go: valid package identifier (lowercase,
+                            # underscores not hyphens, no spaces). other: a
+                            # lowercase slug — no package is generated
+    may_import: []          # names of other modules this one may import
+rules:
+  # `no_cycles` is the only supported rule — checked against the may_import
+  # graph. To forbid a dependency, omit it from may_import (the whitelist).
+  # No naming/label/size rules — the tests can't enforce them.
+  - no_cycles: true
