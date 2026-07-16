@@ -17,6 +17,18 @@
       "category": "Productivity"
     },
     {
+      "name": "start-project",
+      "source": {
+        "source": "local",
+        "path": "./plugins/start-project"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
       "name": "core",
       "source": {
         "source": "local",

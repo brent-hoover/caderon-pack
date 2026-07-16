@@ -1,0 +1,24 @@
+{
+  "name": "start-project",
+  "version": "0.1.0",
+  "description": "Greenfield project planning: vision \u2192 stack \u2192 architecture \u2192 data models \u2192 stories \u2192 plan \u2192 scaffold, ending in a repo with green architecture tests and red BDD specs",
+  "author": {
+    "name": "Brent Hoover",
+    "email": "brent@thebuddhalodge.com"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Start Project",
+    "shortDescription": "Greenfield project planning: vision \u2192 stack \u2192 architecture \u2192 data models \u2192 stories \u2192 plan \u2192 scaf",
+    "longDescription": "Greenfield project planning: vision \u2192 stack \u2192 architecture \u2192 data models \u2192 stories \u2192 plan \u2192 scaffold, ending in a repo with green architecture tests and red BDD specs",
+    "developerName": "Brent Hoover",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Help me use Start Project."
+    ]
+  }
+}
