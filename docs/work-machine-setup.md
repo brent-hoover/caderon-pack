@@ -1,8 +1,9 @@
 # Applying the Claude asset setup to a work machine
 
 Runbook for migrating a second (work) machine onto the caderon-pack plugin + chezmoi-profile
-setup created 2026-05-29. The end state: skills come from the `core`, `go`, `devops`, and
-`doc-driven-development` plugins (devops is **work-only**), `~/.claude/skills/` is empty, and
+setup created 2026-05-29. The end state: skills come from the `core`, `go`, `devops`,
+`doc-driven-development`, and `bdd-workflow` plugins (devops is **work-only**),
+`~/.claude/skills/` is empty, and
 `settings.json` is rendered from chezmoi with `is_personal_machine: false`.
 
 See `docs/specs/2026-05-29-claude-asset-management-design.md` for the why.
@@ -89,7 +90,7 @@ cd ~/.local/share/chezmoi
 chezmoi execute-template < dot_claude/settings.json.tmpl \
   | jq '.enabledPlugins | with_entries(select(.key|test("caderon-pack")))'
 ```
-Expected: `core`, `go`, `devops`, and `doc-driven-development` all `true`.
+Expected: `core`, `go`, `devops`, `doc-driven-development`, and `bdd-workflow` all `true`.
 
 ---
 
@@ -105,7 +106,8 @@ chezmoi diff ~/.claude/settings.json
 ```
 
 Walk the diff:
-- **Keep from the template:** the caderon-pack entries (core/go/devops/doc-driven-development)
+- **Keep from the template:** the caderon-pack entries
+  (core/go/devops/doc-driven-development/bdd-workflow)
   and the GitHub marketplace source — that's the point.
 - **Reconcile anything work-specific** the diff would remove (extra permissions, work-only
   plugins, a different `model`, work MCP). If the template would drop something you need on
@@ -140,7 +142,7 @@ remove the loose copies.
 ```bash
 claude plugin marketplace add brent-hoover/caderon-pack   # skip if already listed
 claude plugin marketplace update caderon-pack
-claude plugin install core@caderon-pack go@caderon-pack devops@caderon-pack doc-driven-development@caderon-pack -s user
+claude plugin install core@caderon-pack go@caderon-pack devops@caderon-pack doc-driven-development@caderon-pack bdd-workflow@caderon-pack -s user
 ```
 
 Verify the skills landed in the plugin cache (note the version subdir — use a full `find`, not
@@ -206,7 +208,8 @@ from plugins). Then:
 claude plugin list | grep -i caderon
 ```
 In-session, `/plugin` should list `core@caderon-pack`, `go@caderon-pack`, `devops@caderon-pack`,
-`doc-driven-development@caderon-pack` as enabled, and the helm/k8s/go/roborev skills should
+`doc-driven-development@caderon-pack`, `bdd-workflow@caderon-pack` as enabled, and the
+helm/k8s/go/roborev skills should
 appear in the available-skills list (devops skills present here, unlike the personal machine).
 
 ---

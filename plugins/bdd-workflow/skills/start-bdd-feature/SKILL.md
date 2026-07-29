@@ -6,7 +6,7 @@ description: >
   Trigger phrases: "start a feature", "new feature", "/start-bdd-feature", "/start-bdd-feature <slug>".
   Claude drives content generation; user reviews and approves each doc before advancing.
   BDD scenarios and scope.md are mandatory gates before plan.md can be written.
-version: 1.1.0
+version: 1.2.0
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
@@ -201,26 +201,7 @@ Revise and re-write scenario files per the user's feedback.
 
 ---
 
-**Step 3: Write scope.md**
-
-Write `<doc-root>/<slug>/scope.md` from the template. By this point the design and scenarios are
-settled, so all three fields can be filled concretely:
-
-- **Objective**: one sentence distilling what this feature delivers (from the problem + chosen solution).
-- **Allowlist**: paths and globs of every file/module the implementation will touch, derived from
-  the design's Approach and Interfaces sections. Be specific — this is the guard against scope creep.
-- **Non-goals**: anything explicitly out of scope (pull from design's Out of scope section).
-
-Present `scope.md` to the user and ask:
-> "Is this the right scope? Is the allowlist complete, and is anything in it that shouldn't be?"
-
-Revise and re-write `scope.md` per the user's feedback.
-
-**Do not proceed to Step 4 until the user explicitly approves the scope.**
-
----
-
-**Step 4: Draft design.md**
+**Step 3: Draft design.md**
 
 Draft `design.md` from the template. The **BDD Scenarios** section must list every `.feature` file
 written, with a one-line description of the behavior it proves. The **Alternatives considered**
@@ -237,6 +218,32 @@ and what you changed. Ask: "Does this design.md look right? Any changes?"
 
 Revise per the user's feedback until approved, re-writing `<doc-root>/<slug>/design.md` each time.
 
+**Do not proceed to Step 4 until the user explicitly approves the design.**
+
+---
+
+**Step 4: Write scope.md**
+
+Scope comes last in this phase because its allowlist is derived from the approved design. By this
+point the scenarios and design are both settled, so all three fields can be filled concretely:
+
+- **Objective**: one sentence distilling what this feature delivers (from the problem + chosen solution).
+- **Allowlist**: paths and globs of every file/module the implementation will touch, derived from
+  the approved design's Approach and Interfaces sections. Be specific — this is the guard against
+  scope creep.
+- **Non-goals**: anything explicitly out of scope (pull from the design's Out of scope section).
+
+Write `<doc-root>/<slug>/scope.md` from the template, then present it and ask:
+> "Is this the right scope? Is the allowlist complete, and is anything in it that shouldn't be?"
+
+Revise and re-write `scope.md` per the user's feedback.
+
+**Do not proceed to PHASE: PLAN until the user explicitly approves the scope.**
+
+If `design.md` is later revised — during PLAN, or at any point in implementation — re-derive
+`scope.md` from the updated design and get it re-approved. An approved scope that no longer matches
+the design is not a gate.
+
 ---
 
 ## PHASE: PLAN
@@ -246,7 +253,7 @@ Announce: **[PHASE: PLAN]**
 Draft `plan.md` from the template. The plan must contain:
 
 - **Overview**: what we're implementing, in what order, why that order (one paragraph)
-- **Preconditions**: approved design, approved scenarios, filled scope.md, resolved open questions
+- **Preconditions**: approved scenarios, approved design, approved scope.md, resolved open questions
 - **Steps**: ordered, each sized for one PR or session, each with:
   - **What**: concrete change — files touched, behavior added/modified
   - **Why**: what this step unblocks or achieves
@@ -284,8 +291,8 @@ Print summary:
 ```
 ✓ <doc-root>/<slug>/problem.md
 ✓ <doc-root>/<slug>/scenarios/<n> feature files
-✓ <doc-root>/<slug>/scope.md
 ✓ <doc-root>/<slug>/design.md
+✓ <doc-root>/<slug>/scope.md
 ✓ <doc-root>/<slug>/plan.md
 Committed: docs(<slug>): add problem/design/scenarios/scope/plan
 ```

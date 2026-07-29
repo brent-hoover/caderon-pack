@@ -5,7 +5,7 @@ description: >
   Use when starting any new feature, initiative, or significant piece of work.
   Trigger phrases: "start a feature", "new feature", "/start-feature", "/start-feature <slug>".
   Claude drives content generation; user reviews and approves each doc before advancing.
-version: 1.5.0
+version: 1.6.0
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 

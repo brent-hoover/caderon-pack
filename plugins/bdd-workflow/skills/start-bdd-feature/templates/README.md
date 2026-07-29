@@ -12,8 +12,8 @@ All paths below are relative to this directory, whatever it's called in this pro
 |-------|-----|---------|
 | PROBLEM | `<slug>/problem.md` | Current situation, what's wrong, complexity drivers, constraints, out-of-scope, success criteria. **No solutions.** |
 | DESIGN | `<slug>/scenarios/*.feature` | One file per behavior. Each needs a happy path, an edge case, and a failure case. **Hard gate — must be approved before planning.** |
-| DESIGN | `<slug>/scope.md` | Objective, allowlist of files the implementation may touch, non-goals. **Hard gate.** |
 | DESIGN | `<slug>/design.md` | Three solutions (simplest / complete / optimal), the chosen one, interfaces, data shapes, risks, and the scenario list. |
+| DESIGN | `<slug>/scope.md` | Objective, allowlist of files the implementation may touch, non-goals — derived from the approved design. **Hard gate.** |
 | PLAN | `<slug>/plan.md` | Ordered steps, each sized for one PR, each with what / why / verify. Every scenario is covered by at least one step. |
 | — | `<slug>/deferred.md` | Running catalog of work punted during implementation. |
 | CLOSE | `<slug>/completed.md` | What shipped, how it differed from the plan, what was verified. |
