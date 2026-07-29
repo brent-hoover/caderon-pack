@@ -28,14 +28,13 @@ ask: "What's the feature slug? Use kebab-case — e.g. `user-auth`, `billing-exp
 
 Announce: `Writing docs to <doc-root>/<slug>/`
 
-Create the directory and seed the doc root's flow README (an existing one is never
-touched; if it prints `SEEDED_README=yes`, remember it for the DONE phase):
+Create the directory and seed the doc root's flow README (an existing one is never touched;
+DONE stages the README only while it is untracked):
 
 ```bash
 mkdir -p <doc-root>/<slug>
 if [ ! -e <doc-root>/README.md ]; then
   cp "${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/README.md" <doc-root>/README.md
-  echo "SEEDED_README=yes"
 fi
 ```
 
@@ -198,8 +197,11 @@ Announce: **[PHASE: DONE]**
 
 ```bash
 git add <doc-root>/<slug>/
-# plus <doc-root>/README.md, but ONLY if setup printed SEEDED_README=yes —
-# an already-present README may hold unrelated edits that aren't ours to commit.
+# Stage the flow README only if it is still untracked — i.e. this run seeded it.
+# A tracked README may hold unrelated edits that aren't ours to commit.
+if [ -n "$(git ls-files --others --exclude-standard -- <doc-root>/README.md)" ]; then
+  git add <doc-root>/README.md
+fi
 git commit -m "docs(<slug>): add problem/design/plan"
 ```
 
