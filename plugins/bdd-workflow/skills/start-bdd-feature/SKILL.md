@@ -282,7 +282,7 @@ Revise per the user's feedback until approved, re-writing `<doc-root>/<slug>/pla
 Announce: **[PHASE: DONE]**
 
 ```bash
-git add <doc-root>/<slug>/
+git add <doc-root>/<slug>/ <doc-root>/README.md
 git commit -m "docs(<slug>): add problem/design/scenarios/scope/plan"
 ```
 

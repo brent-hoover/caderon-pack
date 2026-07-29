@@ -23,8 +23,9 @@ Implementation happens after `plan.md` is approved: the scenarios run red, then 
 ## Commands
 
 - `/start-bdd-feature <slug>` — drives PROBLEM → DESIGN → PLAN interactively. The DESIGN phase will
-  not advance until the scenarios and `scope.md` are approved. Each doc is vetted by a reviewer
-  subagent before you see it; you give final approval.
+  not advance until the scenarios and `scope.md` are approved. `problem.md`, `design.md`, and
+  `plan.md` are each vetted by a reviewer subagent before you see them; scenarios and `scope.md` go
+  straight to you. You give final approval either way.
 - `/close-bdd-feature <slug>` — resolves `deferred.md` (do now / keep deferred / drop), writes
   `completed.md`, and moves the directory to `archived/<slug>/`.
 - `/scaffold-bdd-docs` — drops the blank templates into `feature-work/_templates/`.

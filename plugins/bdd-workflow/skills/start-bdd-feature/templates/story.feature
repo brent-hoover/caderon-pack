@@ -1,6 +1,6 @@
-# features/<behavior-slug>.feature
-# Maps to: plan.md Step N  ·  contract.md Part C row N
-# Scenario names below are copied verbatim into contract.md and plan.md.
+# scenarios/<behavior-slug>.feature
+# Maps to: plan.md Step N
+# Scenario names below are copied verbatim into plan.md.
 #
 # Gherkin rules:
 #   Given  — pre-existing state (never an action)
