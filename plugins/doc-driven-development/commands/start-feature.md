@@ -29,12 +29,14 @@ ask: "What's the feature slug? Use kebab-case — e.g. `user-auth`, `billing-exp
 Announce: `Writing docs to <doc-root>/<slug>/`
 
 Create the directory and seed the doc root's flow README (an existing one is never touched, nor is
-one that is tracked but deleted; note `SEEDED_README` if printed — DONE needs it):
+one the user deleted from the worktree, the index, or with `git rm`; note `SEEDED_README` if
+printed — DONE needs it):
 
 ```bash
 mkdir -p <doc-root>/<slug>
 if [ ! -e <doc-root>/README.md ] \
-   && ! git ls-files --error-unmatch <doc-root>/README.md >/dev/null 2>&1; then
+   && ! git ls-files --error-unmatch <doc-root>/README.md >/dev/null 2>&1 \
+   && ! git cat-file -e HEAD:<doc-root>/README.md 2>/dev/null; then
   cp "${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/README.md" <doc-root>/README.md && echo SEEDED_README
 fi
 ```

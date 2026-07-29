@@ -5,7 +5,7 @@ description: >
   Use when starting any new feature, initiative, or significant piece of work.
   Trigger phrases: "start a feature", "new feature", "/start-feature", "/start-feature <slug>".
   Claude drives content generation; user reviews and approves each doc before advancing.
-version: 1.7.3
+version: 1.7.4
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
@@ -72,13 +72,15 @@ Announce: `Writing docs to <doc-root>/<slug>/`
 ```bash
 mkdir -p <doc-root>/<slug>
 if [ ! -e <doc-root>/README.md ] \
-   && ! git ls-files --error-unmatch <doc-root>/README.md >/dev/null 2>&1; then
+   && ! git ls-files --error-unmatch <doc-root>/README.md >/dev/null 2>&1 \
+   && ! git cat-file -e HEAD:<doc-root>/README.md 2>/dev/null; then
   cp "${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/README.md" <doc-root>/README.md && echo SEEDED_README
 fi
 ```
 
 This seeds the doc root's flow README on first use only. It skips a README that already exists,
-and skips one that is tracked but deleted in the worktree — that deletion was deliberate.
+and skips one deleted from the worktree or the index, or removed with `git rm` — those
+deletions were deliberate.
 **If it printed `SEEDED_README`, note that for the DONE phase** — that's the only case where the
 README is ours to commit.
 
