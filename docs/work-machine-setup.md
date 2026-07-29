@@ -130,7 +130,7 @@ jq '.enabledPlugins | with_entries(select(.key|test("caderon-pack")))' ~/.claude
 jq -c '.extraKnownMarketplaces."caderon-pack".source' ~/.claude/settings.json
 jq '.permissions.allow | length' ~/.claude/settings.json   # sanity-check nothing important was lost
 ```
-Expected: all four caderon-pack plugins `true`; source is `{"source":"github","repo":"brent-hoover/caderon-pack"}`.
+Expected: all five caderon-pack plugins `true`; source is `{"source":"github","repo":"brent-hoover/caderon-pack"}`.
 
 ---
 
@@ -148,9 +148,11 @@ claude plugin install core@caderon-pack go@caderon-pack devops@caderon-pack doc-
 Verify the skills landed in the plugin cache (note the version subdir — use a full `find`, not
 `-maxdepth 2`):
 ```bash
-find ~/.claude/plugins/cache/caderon-pack/core   -name SKILL.md | wc -l   # 6
-find ~/.claude/plugins/cache/caderon-pack/go     -name SKILL.md | wc -l   # 4
-find ~/.claude/plugins/cache/caderon-pack/devops -name SKILL.md | wc -l   # 4
+find ~/.claude/plugins/cache/caderon-pack/core   -name SKILL.md | wc -l   # 14
+find ~/.claude/plugins/cache/caderon-pack/go     -name SKILL.md | wc -l   # 5
+find ~/.claude/plugins/cache/caderon-pack/devops -name SKILL.md | wc -l   # 5
+find ~/.claude/plugins/cache/caderon-pack/doc-driven-development -name SKILL.md | wc -l   # 2
+find ~/.claude/plugins/cache/caderon-pack/bdd-workflow -name SKILL.md | wc -l   # 4
 ```
 
 **Gate:** do not continue until these counts are right.
@@ -209,7 +211,8 @@ claude plugin list | grep -i caderon
 ```
 In-session, `/plugin` should list `core@caderon-pack`, `go@caderon-pack`, `devops@caderon-pack`,
 `doc-driven-development@caderon-pack`, `bdd-workflow@caderon-pack` as enabled, and the
-helm/k8s/go/roborev skills should
+helm/k8s/go/roborev skills plus `start-bdd-feature` / `close-bdd-feature` / `pytest-bdd` / `godog`
+should
 appear in the available-skills list (devops skills present here, unlike the personal machine).
 
 ---
