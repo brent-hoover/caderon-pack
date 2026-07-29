@@ -9,11 +9,11 @@ All paths below are relative to this directory, whatever it's called in this pro
 
 | Phase | Doc | Purpose |
 |-------|-----|---------|
-| PROBLEM | `problem.md` | Current situation, what's wrong, complexity drivers, constraints, out-of-scope, success criteria. **No solutions.** |
-| DESIGN | `design.md` | Three solutions (simplest / complete / optimal), the chosen one, interfaces, data shapes, risks. Skipped when the approach is obvious. |
-| PLAN | `plan.md` | Ordered steps, each sized for one PR, each with what / why / verify. |
-| — | `deferred.md` | Running catalog of work punted during implementation. |
-| CLOSE | `completed.md` | What shipped, how it differed from the plan, what was verified. |
+| PROBLEM | `<slug>/problem.md` | Current situation, what's wrong, complexity drivers, constraints, out-of-scope, success criteria. **No solutions.** |
+| DESIGN | `<slug>/design.md` | Three solutions (simplest / complete / optimal), the chosen one, interfaces, data shapes, risks. Skipped when the approach is obvious. |
+| PLAN | `<slug>/plan.md` | Ordered steps, each sized for one PR, each with what / why / verify. |
+| — | `<slug>/deferred.md` | Running catalog of work punted during implementation. |
+| CLOSE | `<slug>/completed.md` | What shipped, how it differed from the plan, what was verified. |
 
 Implementation happens after `plan.md` is approved.
 
