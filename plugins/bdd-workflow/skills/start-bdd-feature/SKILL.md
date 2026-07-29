@@ -6,7 +6,7 @@ description: >
   Trigger phrases: "start a feature", "new feature", "/start-bdd-feature", "/start-bdd-feature <slug>".
   Claude drives content generation; user reviews and approves each doc before advancing.
   BDD scenarios and scope.md are mandatory gates before plan.md can be written.
-version: 1.2.0
+version: 1.3.0
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
@@ -52,10 +52,15 @@ Announce: `Writing docs to <doc-root>/<slug>/`
 
 ```bash
 mkdir -p <doc-root>/<slug>/scenarios
-cp -n "${CLAUDE_PLUGIN_ROOT}/skills/start-bdd-feature/templates/README.md" <doc-root>/README.md
+if [ ! -e <doc-root>/README.md ]; then
+  cp "${CLAUDE_PLUGIN_ROOT}/skills/start-bdd-feature/templates/README.md" <doc-root>/README.md
+  echo "SEEDED_README=yes"
+fi
 ```
 
-The `cp -n` seeds the doc root's flow README on first use and never overwrites an existing one.
+This seeds the doc root's flow README on first use and never touches an existing one. If it
+printed `SEEDED_README=yes`, remember that — the DONE phase stages the README only when this
+run created it.
 
 **4. Get metadata:**
 
@@ -282,7 +287,9 @@ Revise per the user's feedback until approved, re-writing `<doc-root>/<slug>/pla
 Announce: **[PHASE: DONE]**
 
 ```bash
-git add <doc-root>/<slug>/ <doc-root>/README.md
+git add <doc-root>/<slug>/
+# plus <doc-root>/README.md, but ONLY if setup printed SEEDED_README=yes —
+# an already-present README may hold unrelated edits that aren't ours to commit.
 git commit -m "docs(<slug>): add problem/design/scenarios/scope/plan"
 ```
 
