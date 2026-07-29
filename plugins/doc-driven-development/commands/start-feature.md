@@ -28,10 +28,11 @@ ask: "What's the feature slug? Use kebab-case — e.g. `user-auth`, `billing-exp
 
 Announce: `Writing docs to <doc-root>/<slug>/`
 
-Create the directory:
+Create the directory and seed the doc root's flow README (`cp -n` never overwrites an existing one):
 
 ```bash
 mkdir -p <doc-root>/<slug>
+cp -n "${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/README.md" <doc-root>/README.md
 ```
 
 **3. Get metadata:**

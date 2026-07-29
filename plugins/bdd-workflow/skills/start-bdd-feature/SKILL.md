@@ -52,7 +52,10 @@ Announce: `Writing docs to <doc-root>/<slug>/`
 
 ```bash
 mkdir -p <doc-root>/<slug>/scenarios
+cp -n "${CLAUDE_PLUGIN_ROOT}/skills/start-bdd-feature/templates/README.md" <doc-root>/README.md
 ```
+
+The `cp -n` seeds the doc root's flow README on first use and never overwrites an existing one.
 
 **4. Get metadata:**
 

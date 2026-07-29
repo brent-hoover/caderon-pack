@@ -11,7 +11,8 @@ organized into plugins that are enabled per machine.
 | `go` | all machines | `go-best-practices`, `go-backend-workflow`, `go-concurrency-patterns`, `go-error-handling`, `go-interfaces` |
 | `python` | all machines | `python-best-practices` |
 | `devops` | work machines only | `helm-debugging`, `helm-values-management`, `k8s-manifest-generator`, `k8s-security-policies`, `terraform-skill` |
-| `doc-driven-development` | all machines | `start-feature` (`problem → design → plan`) + `close-feature` (revisit deferred → completed → archive) documentation lifecycle, with `problem-reviewer` / `design-reviewer` / `plan-reviewer` / `completion-reviewer` Opus agents vetting each doc |
+| `doc-driven-development` | all machines | `start-feature` (`problem → design → plan`) + `close-feature` (revisit deferred → completed → archive) documentation lifecycle, with `problem-reviewer` / `design-reviewer` / `plan-reviewer` / `completion-reviewer` Opus agents vetting each doc; `/scaffold-docs` drops the bare templates into a project |
+| `bdd-workflow` | all machines | `start-bdd-feature` (`problem → Gherkin scenarios → design → plan`) + `close-bdd-feature`, with the same four Opus reviewer agents plus `pytest-bdd` / `godog` skills; `/scaffold-bdd-docs` drops the bare templates into a project |
 | `ticket-to-pr` | all machines | `/ticket-to-pr` and `/ticket-to-pr-finish` commands; clarify → tests → implement → roborev → PR workflow |
 | `excalidraw-diagrams` | all machines | `excalidraw` skill for generating `.excalidraw` architecture and K8s diagrams |
 | `journal` | all machines | `journal-this` skill for capturing sessions as dated engineering journal entries |
@@ -90,6 +91,12 @@ terminology, and cut to what's needed (delete test, no filler). The reviewer age
 During implementation, punted work is logged to `deferred.md`. When a feature is complete, run
 `/close-feature`: it revisits `deferred.md` (do now / keep deferred / permanently drop), writes
 `completed.md`, and moves the directory to `<doc-root>/archived/<slug>/`.
+
+To set a project up without running the workflow, run `/scaffold-docs` (or `/scaffold-bdd-docs`
+for the Gherkin set, which adds `scope.md`, `stories.md`, and `story.feature`). Both write
+`feature-work/README.md` describing the flow and copy the blank templates into
+`feature-work/_templates/`, creating the dirs if absent. Neither overwrites an existing file
+without asking.
 
 ## Design docs
 

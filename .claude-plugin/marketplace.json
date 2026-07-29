@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "doc-driven-development",
-      "description": "Guides Claude through problem → design → plan documentation workflow for new features",
+      "description": "Guides Claude through problem → design → plan documentation workflow for new features; /scaffold-docs copies the bare templates into a project",
       "source": "./plugins/doc-driven-development",
       "category": "workflow"
     },
@@ -46,7 +46,7 @@
     },
     {
       "name": "bdd-workflow",
-      "description": "BDD-enforced feature lifecycle: problem → Gherkin scenarios → design → plan → close, with mutation testing gate at close",
+      "description": "BDD-enforced feature lifecycle: problem → Gherkin scenarios → design → plan → close, with mutation testing gate at close; /scaffold-bdd-docs copies the bare templates into a project",
       "source": "./plugins/bdd-workflow",
       "category": "workflow"
     },
