@@ -28,13 +28,15 @@ ask: "What's the feature slug? Use kebab-case — e.g. `user-auth`, `billing-exp
 
 Announce: `Writing docs to <doc-root>/<slug>/`
 
-Create the directory and seed the doc root's flow README (an existing one is never touched;
-DONE stages the README only while it is untracked):
+Create the directory and seed the doc root's flow README (an existing one is never touched, nor is
+one that is tracked but deleted; note `SEEDED_README` if printed — DONE needs it):
 
 ```bash
 mkdir -p <doc-root>/<slug>
-if [ ! -e <doc-root>/README.md ]; then
+if [ ! -e <doc-root>/README.md ] \
+   && ! git ls-files --error-unmatch <doc-root>/README.md >/dev/null 2>&1; then
   cp "${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/README.md" <doc-root>/README.md
+  echo SEEDED_README
 fi
 ```
 
@@ -195,13 +197,13 @@ Revise per the user's feedback until approved, re-writing `<doc-root>/<slug>/pla
 
 Announce: **[PHASE: DONE]**
 
+**Only if setup printed `SEEDED_README`**, stage the flow README with the feature docs — it is a
+new file this run created. Otherwise leave `<doc-root>/README.md` alone; whatever state it is in
+belongs to the user, tracked or not.
+
 ```bash
 git add <doc-root>/<slug>/
-# Stage the flow README only if it is still untracked — i.e. this run seeded it.
-# A tracked README may hold unrelated edits that aren't ours to commit.
-if [ -n "$(git ls-files --others --exclude-standard -- <doc-root>/README.md)" ]; then
-  git add <doc-root>/README.md
-fi
+git add <doc-root>/README.md      # ONLY if setup printed SEEDED_README
 git commit -m "docs(<slug>): add problem/design/plan"
 ```
 

@@ -5,7 +5,7 @@ description: >
   Use when starting any new feature, initiative, or significant piece of work.
   Trigger phrases: "start a feature", "new feature", "/start-feature", "/start-feature <slug>".
   Claude drives content generation; user reviews and approves each doc before advancing.
-version: 1.7.1
+version: 1.7.2
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
@@ -71,13 +71,17 @@ Announce: `Writing docs to <doc-root>/<slug>/`
 
 ```bash
 mkdir -p <doc-root>/<slug>
-if [ ! -e <doc-root>/README.md ]; then
+if [ ! -e <doc-root>/README.md ] \
+   && ! git ls-files --error-unmatch <doc-root>/README.md >/dev/null 2>&1; then
   cp "${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/README.md" <doc-root>/README.md
+  echo SEEDED_README
 fi
 ```
 
-This seeds the doc root's flow README on first use and never touches an existing one. The DONE
-phase stages that README only while it is untracked, so an existing tracked one is left alone.
+This seeds the doc root's flow README on first use only. It skips a README that already exists,
+and skips one that is tracked but deleted in the worktree — that deletion was deliberate.
+**If it printed `SEEDED_README`, note that for the DONE phase** — that's the only case where the
+README is ours to commit.
 
 **4. Get metadata:**
 
@@ -275,13 +279,13 @@ Revise per the user's feedback until approved, re-writing `<doc-root>/<slug>/pla
 
 Announce: **[PHASE: DONE]**
 
+**Only if setup printed `SEEDED_README`**, stage the flow README with the feature docs — it is a
+new file this run created. Otherwise leave `<doc-root>/README.md` alone; whatever state it is in
+belongs to the user, tracked or not.
+
 ```bash
 git add <doc-root>/<slug>/
-# Stage the flow README only if it is still untracked — i.e. this run seeded it.
-# A tracked README may hold unrelated edits that aren't ours to commit.
-if [ -n "$(git ls-files --others --exclude-standard -- <doc-root>/README.md)" ]; then
-  git add <doc-root>/README.md
-fi
+git add <doc-root>/README.md      # ONLY if setup printed SEEDED_README
 git commit -m "docs(<slug>): add problem/design/plan"
 ```
 
