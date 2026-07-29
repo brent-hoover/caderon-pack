@@ -6,7 +6,7 @@ description: >
   Trigger phrases: "start a feature", "new feature", "/start-bdd-feature", "/start-bdd-feature <slug>".
   Claude drives content generation; user reviews and approves each doc before advancing.
   BDD scenarios and scope.md are mandatory gates before plan.md can be written.
-version: 1.3.2
+version: 1.3.3
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
@@ -54,8 +54,7 @@ Announce: `Writing docs to <doc-root>/<slug>/`
 mkdir -p <doc-root>/<slug>/scenarios
 if [ ! -e <doc-root>/README.md ] \
    && ! git ls-files --error-unmatch <doc-root>/README.md >/dev/null 2>&1; then
-  cp "${CLAUDE_PLUGIN_ROOT}/skills/start-bdd-feature/templates/README.md" <doc-root>/README.md
-  echo SEEDED_README
+  cp "${CLAUDE_PLUGIN_ROOT}/skills/start-bdd-feature/templates/README.md" <doc-root>/README.md && echo SEEDED_README
 fi
 ```
 

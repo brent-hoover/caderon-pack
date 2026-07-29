@@ -35,8 +35,7 @@ one that is tracked but deleted; note `SEEDED_README` if printed — DONE needs 
 mkdir -p <doc-root>/<slug>
 if [ ! -e <doc-root>/README.md ] \
    && ! git ls-files --error-unmatch <doc-root>/README.md >/dev/null 2>&1; then
-  cp "${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/README.md" <doc-root>/README.md
-  echo SEEDED_README
+  cp "${CLAUDE_PLUGIN_ROOT}/skills/start-feature/templates/README.md" <doc-root>/README.md && echo SEEDED_README
 fi
 ```
 

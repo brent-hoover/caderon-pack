@@ -1,6 +1,6 @@
 {
   "name": "bdd-workflow",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Guides Claude through the problem → BDD scenarios → design → plan → close feature lifecycle, enforcing Gherkin scenarios as the definition of done before planning begins",
   "author": {
     "name": "Brent Hoover",
