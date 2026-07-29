@@ -1,7 +1,9 @@
-# feature-work
+# Feature docs
 
-Every significant piece of work gets a directory here: `feature-work/<slug>/`. The docs are written
-in order, and each one is approved before the next is started.
+Every significant piece of work gets a directory here: `<slug>/`. The docs are written in order,
+and each one is approved before the next is started.
+
+All paths below are relative to this directory, whatever it's called in this project.
 
 ## The flow
 
@@ -20,14 +22,14 @@ Implementation happens after `plan.md` is approved.
 - `/start-feature <slug>` — drives PROBLEM → DESIGN → PLAN interactively. Each doc is vetted by a
   reviewer subagent before you see it; you give final approval.
 - `/close-feature <slug>` — resolves `deferred.md` (do now / keep deferred / drop), writes
-  `completed.md`, and moves the directory to `feature-work/archived/<slug>/`.
-- `/scaffold-docs` — refreshes the blank templates in `_templates/`.
+  `completed.md`, and moves the directory to `archived/<slug>/`.
+- `/scaffold-docs` — drops the blank templates into `feature-work/_templates/`.
 
 ## Conventions
 
 - **Slugs are kebab-case**: `user-auth`, `billing-export`.
-- **Blank templates live in `_templates/`.** Copy from there for hand-written docs; `/start-feature`
-  reads them directly from the plugin.
 - **No `<placeholder>` text survives.** A doc is either filled in or not written yet.
 - **Ground docs in real code** — reference actual modules, symbols, and file paths.
 - **Closed features move to `archived/`** rather than being deleted.
+- If `_templates/` exists here, it holds the blank templates for hand-written docs; `/start-feature`
+  reads them straight from the plugin either way.

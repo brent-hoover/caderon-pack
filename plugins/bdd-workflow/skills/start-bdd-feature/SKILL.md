@@ -6,7 +6,7 @@ description: >
   Trigger phrases: "start a feature", "new feature", "/start-bdd-feature", "/start-bdd-feature <slug>".
   Claude drives content generation; user reviews and approves each doc before advancing.
   BDD scenarios and scope.md are mandatory gates before plan.md can be written.
-version: 1.0.0
+version: 1.1.0
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
