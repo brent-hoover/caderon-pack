@@ -211,6 +211,13 @@ settled, so all three fields can be filled concretely:
   the design's Approach and Interfaces sections. Be specific — this is the guard against scope creep.
 - **Non-goals**: anything explicitly out of scope (pull from design's Out of scope section).
 
+Present `scope.md` to the user and ask:
+> "Is this the right scope? Is the allowlist complete, and is anything in it that shouldn't be?"
+
+Revise and re-write `scope.md` per the user's feedback.
+
+**Do not proceed to Step 4 until the user explicitly approves the scope.**
+
 ---
 
 **Step 4: Draft design.md**
