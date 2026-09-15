@@ -43,4 +43,6 @@ drop the fixes below, so re-apply them after any update.
   in different directories previously shared one workspace and overwrote each other's
   briefs, review packages and `progress.md` — the exact failure the script's own header
   says plan-scoping exists to prevent. `task-brief` and `review-package` derive their
-  paths from this script, so they inherit the fix; their doc comments are updated.
+  paths from this script, so they inherit the fix. The documented workspace layout is
+  updated to match in `task-brief`, `review-package` and
+  `skills/subagent-driven-development/SKILL.md`.
