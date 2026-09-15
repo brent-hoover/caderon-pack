@@ -27,6 +27,10 @@ COMMON_PLUGIN_FIELDS = (
     "license",
     "keywords",
 )
+# Codex truncates the plugin card's short description past this width.
+MAX_SHORT_DESCRIPTION_CHARS = 96
+# Trailing separators left by clipping read as a broken sentence on the card.
+SHORT_DESCRIPTION_DANGLING_CHARS = " ,;:-–—→>/&"
 DEFAULT_INSTALL_POLICY = "AVAILABLE"
 DEFAULT_AUTH_POLICY = "ON_INSTALL"
 CLAUDE_SCHEMA = "https://anthropic.com/claude-code/marketplace.schema.json"
@@ -157,12 +161,22 @@ def display_name(name: str) -> str:
     return " ".join(part.capitalize() for part in re.split(r"[-_]+", name) if part)
 
 
+def short_description(description: str) -> str:
+    """Clip to the Codex card width on a word boundary, so it never ends mid-word."""
+    if len(description) <= MAX_SHORT_DESCRIPTION_CHARS:
+        return description
+    clipped = description[:MAX_SHORT_DESCRIPTION_CHARS]
+    if description[MAX_SHORT_DESCRIPTION_CHARS].isalnum():
+        clipped = clipped.rsplit(" ", 1)[0]
+    return clipped.rstrip(SHORT_DESCRIPTION_DANGLING_CHARS)
+
+
 def default_interface(plugin: dict[str, Any], plugin_name: str) -> dict[str, Any]:
     title = display_name(str(plugin.get("name") or plugin_name))
     description = str(plugin.get("description") or f"{title} plugin")
     return {
         "displayName": title,
-        "shortDescription": description[:96],
+        "shortDescription": short_description(description),
         "longDescription": description,
         "developerName": plugin.get("author", {}).get("name", "Brent Hoover")
         if isinstance(plugin.get("author"), dict)

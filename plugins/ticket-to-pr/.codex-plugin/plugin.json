@@ -21,7 +21,7 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Ticket To Pr",
-    "shortDescription": "Drive one ticket (GitHub Issue or jig) through clarify \u2192 tests \u2192 implement \u2192 roborev review-fix ",
+    "shortDescription": "Drive one ticket (GitHub Issue or jig) through clarify \u2192 tests \u2192 implement \u2192 roborev review-fix",
     "longDescription": "Drive one ticket (GitHub Issue or jig) through clarify \u2192 tests \u2192 implement \u2192 roborev review-fix \u2192 PR, with a post-merge docs PR and cleanup",
     "developerName": "Brent Hoover",
     "category": "Productivity",

@@ -146,6 +146,90 @@ class SyncPluginMetadataTest(unittest.TestCase):
             read_json(self.tmp / "plugins" / "go" / ".claude-plugin" / "plugin.json"),
         )
 
+    def test_generated_short_description_does_not_split_a_word(self) -> None:
+        # Truncating this at 96 characters lands inside "techniques".
+        long_description = (
+            "Core skills library for Claude Code: TDD, debugging, collaboration "
+            "patterns, and proven techniques"
+        )
+        self.add_plugin_without_codex_manifest("superpowers", long_description)
+
+        self.sync()
+
+        interface = read_json(
+            self.tmp / "plugins" / "superpowers" / ".codex-plugin" / "plugin.json"
+        )["interface"]
+        short = interface["shortDescription"]
+        self.assertLessEqual(len(short), 96)
+        self.assertTrue(
+            long_description.startswith(short),
+            f"{short!r} is not a prefix of the full description",
+        )
+        self.assertFalse(
+            long_description[len(short)].isalnum(),
+            f"{short!r} ends mid-word",
+        )
+        self.assertNotIn(
+            short[-1], " ,;:-–—→>/&", f"{short!r} ends on a dangling separator"
+        )
+
+    def test_word_is_kept_when_the_clip_already_lands_on_a_boundary(self) -> None:
+        # Character 96 is the comma after "browsing", so no word is split and
+        # "browsing" must survive.
+        long_description = (
+            "Read and write your Obsidian vault from Claude Code - daily notes, "
+            "quick capture, vault browsing, work logs, and Raindrop digest"
+        )
+        self.assertEqual(",", long_description[96])
+        self.add_plugin_without_codex_manifest("obsidian", long_description)
+
+        self.sync()
+
+        short = read_json(
+            self.tmp / "plugins" / "obsidian" / ".codex-plugin" / "plugin.json"
+        )["interface"]["shortDescription"]
+        self.assertTrue(short.endswith("browsing"), f"{short!r} dropped a whole word")
+
+    def test_short_description_left_alone_when_it_already_fits(self) -> None:
+        description = "Go development skills"
+        self.add_plugin_without_codex_manifest("tiny", description)
+
+        self.sync()
+
+        interface = read_json(
+            self.tmp / "plugins" / "tiny" / ".codex-plugin" / "plugin.json"
+        )["interface"]
+        self.assertEqual(description, interface["shortDescription"])
+        self.assertEqual(description, interface["longDescription"])
+
+    def add_plugin_without_codex_manifest(self, name: str, description: str) -> None:
+        marketplace_path = self.tmp / ".claude-plugin" / "marketplace.json"
+        marketplace = read_json(marketplace_path)
+        marketplace["plugins"].append(
+            {
+                "name": name,
+                "description": description,
+                "source": f"./plugins/{name}",
+                "category": "workflow",
+            }
+        )
+        write_json(marketplace_path, marketplace)
+        write_json(
+            self.tmp / "plugins" / name / ".claude-plugin" / "plugin.json",
+            {
+                "name": name,
+                "version": "1.0.0",
+                "description": description,
+                "author": {"name": "Brent Hoover"},
+                "license": "MIT",
+            },
+        )
+        skill = self.tmp / "plugins" / name / "skills" / name / "SKILL.md"
+        skill.parent.mkdir(parents=True, exist_ok=True)
+        skill.write_text(
+            f"---\nname: {name}\ndescription: {description}\n---\n", encoding="utf-8"
+        )
+
     def test_codex_skills_field_is_preserved(self) -> None:
         codex_path = self.tmp / "plugins" / "go" / ".codex-plugin" / "plugin.json"
         codex = read_json(codex_path)
