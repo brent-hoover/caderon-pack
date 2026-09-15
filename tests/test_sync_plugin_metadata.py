@@ -190,6 +190,24 @@ class SyncPluginMetadataTest(unittest.TestCase):
         )["interface"]["shortDescription"]
         self.assertTrue(short.endswith("browsing"), f"{short!r} dropped a whole word")
 
+    def test_separator_at_the_limit_keeps_the_word_before_it(self) -> None:
+        # Character 95 is the hyphen, so the clip lands between words, not inside
+        # one: "browsing" must survive and only the hyphen is dropped.
+        long_description = (
+            "Read and write your Obsidian vault from Claude Code, daily notes, "
+            "quick capture, vault browsing-work logs and more"
+        )
+        self.assertEqual("-", long_description[95])
+        self.assertTrue(long_description[96].isalnum())
+        self.add_plugin_without_codex_manifest("obsidian-hyphen", long_description)
+
+        self.sync()
+
+        short = read_json(
+            self.tmp / "plugins" / "obsidian-hyphen" / ".codex-plugin" / "plugin.json"
+        )["interface"]["shortDescription"]
+        self.assertTrue(short.endswith("browsing"), f"{short!r} dropped a whole word")
+
     def test_short_description_left_alone_when_it_already_fits(self) -> None:
         description = "Go development skills"
         self.add_plugin_without_codex_manifest("tiny", description)

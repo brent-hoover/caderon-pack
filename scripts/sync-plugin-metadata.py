@@ -166,7 +166,10 @@ def short_description(description: str) -> str:
     if len(description) <= MAX_SHORT_DESCRIPTION_CHARS:
         return description
     clipped = description[:MAX_SHORT_DESCRIPTION_CHARS]
-    if description[MAX_SHORT_DESCRIPTION_CHARS].isalnum():
+    splits_a_word = (
+        clipped[-1].isalnum() and description[MAX_SHORT_DESCRIPTION_CHARS].isalnum()
+    )
+    if splits_a_word:
         clipped = clipped.rsplit(" ", 1)[0]
     return clipped.rstrip(SHORT_DESCRIPTION_DANGLING_CHARS)
 
