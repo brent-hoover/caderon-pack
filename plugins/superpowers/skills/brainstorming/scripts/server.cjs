@@ -103,7 +103,9 @@ const SESSION_DIR = process.env.BRAINSTORM_DIR || '/tmp/brainstorm';
 const CONTENT_DIR = path.join(SESSION_DIR, 'content');
 const STATE_DIR = path.join(SESSION_DIR, 'state');
 const SUPERPOWERS_VERSION = readSuperpowersVersion();
-const SUPERPOWERS_BRAND_IMAGE_URL = 'https://primeradiant.com/brand/superpowers-visual-brainstorming-logo.png';
+// Bundled, not fetched from primeradiant.com: the remote logo disclosed the
+// viewer's IP, request timing and plugin version to a third party on render.
+const SUPERPOWERS_BRAND_IMAGE_URL = readBrandLogoDataUri();
 const TELEMETRY_DISABLE_ENV_VARS = [
   'SUPERPOWERS_DISABLE_TELEMETRY',
   'DISABLE_TELEMETRY',
@@ -205,6 +207,11 @@ const helperInjection = '<script>\n' + helperScript + '\n</script>';
 
 // ========== Helper Functions ==========
 
+function readBrandLogoDataUri() {
+  const logo = path.join(__dirname, '../../..', 'assets', 'superpowers-small.svg');
+  return 'data:image/svg+xml;base64,' + fs.readFileSync(logo).toString('base64');
+}
+
 function readSuperpowersVersion() {
   const root = path.join(__dirname, '../../..');
   const manifests = [
@@ -246,7 +253,7 @@ function brandMarkup() {
     : 'Superpowers v' + version;
   const logo = SUPERPOWERS_TELEMETRY_DISABLED
     ? ''
-    : '<img class="brand-logo" src="' + SUPERPOWERS_BRAND_IMAGE_URL + '?v=' + encodeURIComponent(SUPERPOWERS_VERSION) + '" alt="Prime Radiant" referrerpolicy="no-referrer" decoding="async">';
+    : '<img class="brand-logo" src="' + SUPERPOWERS_BRAND_IMAGE_URL + '" alt="Prime Radiant" referrerpolicy="no-referrer" decoding="async">';
 
   return '<div class="brand"><a href="https://github.com/obra/superpowers">' + logo + '<span class="brand-copy">' + text + '</span></a></div>';
 }
