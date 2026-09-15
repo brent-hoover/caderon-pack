@@ -232,6 +232,16 @@ def excluded_from_codex(repo: Path, plugin_name: str) -> bool:
     return (repo / "plugins" / plugin_name / CODEX_OPT_OUT_MARKER).is_file()
 
 
+def excluded_from_codex_at_base(base_ref: str, plugin_name: str) -> bool:
+    marker = f"plugins/{plugin_name}/{CODEX_OPT_OUT_MARKER}"
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f"{base_ref}:{marker}"],
+        check=False,
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
 def stale_codex_manifests(repo: Path, plugin_names_seen: set[str]) -> list[Path]:
     """Codex manifests belonging to plugins that have since opted out."""
     stale = []
@@ -242,15 +252,15 @@ def stale_codex_manifests(repo: Path, plugin_names_seen: set[str]) -> list[Path]
     return stale
 
 
-def claude_order_with_excluded(
+def claude_order_with_unreconciled(
     *,
     shared_order: list[str],
     claude_market: dict[str, Any] | None,
-    excluded_present: set[str],
+    unreconciled_present: set[str],
 ) -> list[str]:
-    """Splice Codex-excluded plugins back at the index they hold in the Claude
-    marketplace, so opting one out of Codex does not reshuffle the Claude file."""
-    if not excluded_present:
+    """Splice back the plugins kept out of Codex order reconciliation, at the index
+    they hold in the Claude marketplace, so the Claude file is not reshuffled."""
+    if not unreconciled_present:
         return shared_order
 
     positions: dict[str, int] = {}
@@ -259,7 +269,7 @@ def claude_order_with_excluded(
             positions[entry["name"]] = index
 
     ordered = list(shared_order)
-    for name in sorted(excluded_present, key=lambda n: positions.get(n, len(positions))):
+    for name in sorted(unreconciled_present, key=lambda n: positions.get(n, len(positions))):
         index = positions.get(name)
         if index is None or index > len(ordered):
             ordered.append(name)
@@ -538,11 +548,19 @@ def sync_marketplaces(
     )
 
     excluded = {name for name in all_entry_names if excluded_from_codex(repo, name)}
+    # Marker gone since base_ref: the plugin is being published to Codex again,
+    # so its current absence there is the state being undone, not drift.
+    republished = {
+        name
+        for name in all_entry_names - excluded
+        if excluded_from_codex_at_base(base_ref, name)
+    }
+    unreconciled = excluded | republished
 
     present_names: set[str] = set()
     for name in all_entry_names:
-        if name in excluded:
-            # Absent from Codex by choice, so never reconcile its presence there.
+        if name in unreconciled:
+            # Its Codex presence is dictated by the marker, not by reconciliation.
             if name in claude_entries:
                 present_names.add(name)
             continue
@@ -556,9 +574,9 @@ def sync_marketplaces(
         ):
             present_names.add(name)
 
-    # Reconcile ordering over the plugins both files carry; excluded ones are
-    # spliced back afterwards, or their missing Codex entry reads as a conflict.
-    shared_names = present_names - excluded
+    # Reconcile ordering over the plugins both files carry; the rest are spliced
+    # back afterwards, or their missing Codex entry reads as a conflict.
+    shared_names = present_names - unreconciled
     shared_order = resolve_order(
         left_order=marketplace_order(claude_current, shared_names),
         right_order=marketplace_order(codex_current, shared_names),
@@ -567,10 +585,10 @@ def sync_marketplaces(
         present_names=shared_names,
         conflicts=conflicts,
     )
-    order = claude_order_with_excluded(
+    order = claude_order_with_unreconciled(
         shared_order=shared_order,
         claude_market=claude_current,
-        excluded_present=present_names & excluded,
+        unreconciled_present=present_names & unreconciled,
     )
 
     claude_plugins: list[dict[str, Any]] = []

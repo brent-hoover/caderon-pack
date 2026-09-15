@@ -303,6 +303,21 @@ class SyncPluginMetadataTest(unittest.TestCase):
 
         self.assertEqual(before, self.marketplace_names(self.claude_marketplace))
 
+    def test_removing_the_marker_republishes_to_codex(self) -> None:
+        self.exclude_from_codex("go", "Temporarily excluded.")
+        self.sync()
+        run(["git", "add", "-A"], self.tmp)
+        run(["git", "commit", "-q", "-m", "exclude go from codex"], self.tmp)
+        self.assertNotIn("go", self.marketplace_names(self.codex_marketplace))
+
+        (self.tmp / "plugins" / "go" / ".no-codex-plugin").unlink()
+        self.sync()
+
+        self.assertIn("go", self.marketplace_names(self.codex_marketplace))
+        self.assertTrue(
+            (self.tmp / "plugins" / "go" / ".codex-plugin" / "plugin.json").exists()
+        )
+
     @property
     def claude_marketplace(self) -> Path:
         return self.tmp / ".claude-plugin" / "marketplace.json"
