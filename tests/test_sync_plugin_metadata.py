@@ -248,6 +248,77 @@ class SyncPluginMetadataTest(unittest.TestCase):
             f"---\nname: {name}\ndescription: {description}\n---\n", encoding="utf-8"
         )
 
+    def test_codex_opt_out_skips_generating_the_codex_manifest(self) -> None:
+        self.add_plugin_without_codex_manifest("claude-only", "Needs the claude CLI")
+        self.exclude_from_codex("claude-only", "Shells out to `claude -p`.")
+
+        self.sync()
+
+        self.assertFalse(
+            (self.tmp / "plugins" / "claude-only" / ".codex-plugin" / "plugin.json").exists()
+        )
+
+    def test_codex_opt_out_keeps_the_plugin_in_the_claude_marketplace(self) -> None:
+        self.add_plugin_without_codex_manifest("claude-only", "Needs the claude CLI")
+        self.exclude_from_codex("claude-only", "Shells out to `claude -p`.")
+
+        self.sync()
+
+        self.assertIn("claude-only", self.marketplace_names(self.claude_marketplace))
+        self.assertNotIn("claude-only", self.marketplace_names(self.codex_marketplace))
+
+    def test_codex_opt_out_removes_a_stale_codex_manifest(self) -> None:
+        # "go" ships a Codex manifest in the base repo; opting it out must clean up.
+        self.exclude_from_codex("go", "Test exclusion.")
+
+        self.sync()
+
+        self.assertFalse(
+            (self.tmp / "plugins" / "go" / ".codex-plugin" / "plugin.json").exists()
+        )
+        self.assertIn("go", self.marketplace_names(self.claude_marketplace))
+        self.assertNotIn("go", self.marketplace_names(self.codex_marketplace))
+
+    def test_codex_opt_out_settles_and_reports_in_sync(self) -> None:
+        self.exclude_from_codex("go", "Test exclusion.")
+
+        self.sync()
+        second = self.sync()
+        self.assertIn("already in sync", second.stdout)
+
+        check = run(
+            [sys.executable, "sync-plugin-metadata.py", "--base-ref", "HEAD", "--check"],
+            self.tmp,
+            check=False,
+        )
+        self.assertEqual(0, check.returncode, f"--check failed:\n{check.stdout}{check.stderr}")
+
+    def test_codex_opt_out_preserves_claude_marketplace_order(self) -> None:
+        self.add_plugin_without_codex_manifest("aaa-first", "First plugin")
+        self.add_plugin_without_codex_manifest("zzz-last", "Last plugin")
+        self.exclude_from_codex("go", "Test exclusion.")
+        before = self.marketplace_names(self.claude_marketplace)
+
+        self.sync()
+
+        self.assertEqual(before, self.marketplace_names(self.claude_marketplace))
+
+    @property
+    def claude_marketplace(self) -> Path:
+        return self.tmp / ".claude-plugin" / "marketplace.json"
+
+    @property
+    def codex_marketplace(self) -> Path:
+        return self.tmp / ".agents" / "plugins" / "marketplace.json"
+
+    def marketplace_names(self, path: Path) -> list[str]:
+        return [entry["name"] for entry in read_json(path)["plugins"]]
+
+    def exclude_from_codex(self, name: str, reason: str) -> None:
+        marker = self.tmp / "plugins" / name / ".no-codex-plugin"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(reason + "\n", encoding="utf-8")
+
     def test_codex_skills_field_is_preserved(self) -> None:
         codex_path = self.tmp / "plugins" / "go" / ".codex-plugin" / "plugin.json"
         codex = read_json(codex_path)

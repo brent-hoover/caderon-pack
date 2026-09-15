@@ -27,6 +27,11 @@ COMMON_PLUGIN_FIELDS = (
     "license",
     "keywords",
 )
+# A plugin opts out of Codex publication by placing this marker file in its
+# directory; the file's contents record why. Used where a plugin's skills depend
+# on Claude Code itself, so a Codex entry would advertise capabilities that fail
+# there. The plugin stays in the Claude marketplace.
+CODEX_OPT_OUT_MARKER = ".no-codex-plugin"
 # Codex truncates the plugin card's short description past this width.
 MAX_SHORT_DESCRIPTION_CHARS = 96
 # Trailing separators left by clipping read as a broken sentence on the card.
@@ -223,6 +228,46 @@ def plugin_names(
     return names
 
 
+def excluded_from_codex(repo: Path, plugin_name: str) -> bool:
+    return (repo / "plugins" / plugin_name / CODEX_OPT_OUT_MARKER).is_file()
+
+
+def stale_codex_manifests(repo: Path, plugin_names_seen: set[str]) -> list[Path]:
+    """Codex manifests belonging to plugins that have since opted out."""
+    stale = []
+    for name in sorted(plugin_names_seen):
+        manifest = repo / "plugins" / name / ".codex-plugin" / "plugin.json"
+        if excluded_from_codex(repo, name) and manifest.is_file():
+            stale.append(manifest)
+    return stale
+
+
+def claude_order_with_excluded(
+    *,
+    shared_order: list[str],
+    claude_market: dict[str, Any] | None,
+    excluded_present: set[str],
+) -> list[str]:
+    """Splice Codex-excluded plugins back at the index they hold in the Claude
+    marketplace, so opting one out of Codex does not reshuffle the Claude file."""
+    if not excluded_present:
+        return shared_order
+
+    positions: dict[str, int] = {}
+    for index, entry in enumerate((claude_market or {}).get("plugins", [])):
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str):
+            positions[entry["name"]] = index
+
+    ordered = list(shared_order)
+    for name in sorted(excluded_present, key=lambda n: positions.get(n, len(positions))):
+        index = positions.get(name)
+        if index is None or index > len(ordered):
+            ordered.append(name)
+        else:
+            ordered.insert(index, name)
+    return ordered
+
+
 def sync_plugin_manifest(
     *,
     repo: Path,
@@ -236,6 +281,13 @@ def sync_plugin_manifest(
     codex_current = read_json(codex_path)
     if claude_current is None and codex_current is None:
         return None
+
+    if excluded_from_codex(repo, plugin_name):
+        if claude_current is None:
+            return None
+        claude_out = copy.deepcopy(claude_current)
+        claude_out.setdefault("name", plugin_name)
+        return {claude_path: claude_out}
 
     claude_base = read_base_json(base_ref, claude_path.relative_to(repo))
     codex_base = read_base_json(base_ref, codex_path.relative_to(repo))
@@ -485,8 +537,15 @@ def sync_marketplaces(
         | set(base_codex_entries)
     )
 
+    excluded = {name for name in all_entry_names if excluded_from_codex(repo, name)}
+
     present_names: set[str] = set()
     for name in all_entry_names:
+        if name in excluded:
+            # Absent from Codex by choice, so never reconcile its presence there.
+            if name in claude_entries:
+                present_names.add(name)
+            continue
         if resolve_presence(
             name=name,
             left_present=name in claude_entries,
@@ -497,19 +556,38 @@ def sync_marketplaces(
         ):
             present_names.add(name)
 
-    order = resolve_order(
-        left_order=marketplace_order(claude_current, present_names),
-        right_order=marketplace_order(codex_current, present_names),
-        base_left_order=marketplace_order(claude_base, present_names),
-        base_right_order=marketplace_order(codex_base, present_names),
-        present_names=present_names,
+    # Reconcile ordering over the plugins both files carry; excluded ones are
+    # spliced back afterwards, or their missing Codex entry reads as a conflict.
+    shared_names = present_names - excluded
+    shared_order = resolve_order(
+        left_order=marketplace_order(claude_current, shared_names),
+        right_order=marketplace_order(codex_current, shared_names),
+        base_left_order=marketplace_order(claude_base, shared_names),
+        base_right_order=marketplace_order(codex_base, shared_names),
+        present_names=shared_names,
         conflicts=conflicts,
+    )
+    order = claude_order_with_excluded(
+        shared_order=shared_order,
+        claude_market=claude_current,
+        excluded_present=present_names & excluded,
     )
 
     claude_plugins: list[dict[str, Any]] = []
     codex_plugins: list[dict[str, Any]] = []
     for name in order:
         claude_entry = copy.deepcopy(claude_entries.get(name, {"name": name}))
+
+        if name in excluded:
+            # Resolving against the Codex side would read this plugin's absent
+            # Codex entry as a deliberate field removal and reset its category.
+            claude_entry["name"] = name
+            claude_entry.setdefault("description", plugin_description(plugin_manifests, name))
+            claude_entry.setdefault("source", f"./plugins/{name}")
+            claude_entry.setdefault("category", "workflow")
+            claude_plugins.append(claude_entry)
+            continue
+
         codex_entry = copy.deepcopy(codex_entries.get(name, {"name": name}))
         base_claude_entry = base_claude_entries.get(name)
         base_codex_entry = base_codex_entries.get(name)
@@ -578,14 +656,17 @@ def sync_marketplaces(
     }
 
 
-def sync_all(repo: Path, base_ref: str) -> tuple[dict[Path, dict[str, Any]], list[str]]:
+def sync_all(
+    repo: Path, base_ref: str
+) -> tuple[dict[Path, dict[str, Any]], list[str], list[Path]]:
     conflicts: list[str] = []
     claude_market = read_json(repo / ".claude-plugin" / "marketplace.json")
     codex_market = read_json(repo / ".agents" / "plugins" / "marketplace.json")
     desired: dict[Path, dict[str, Any]] = {}
     manifests: dict[str, dict[str, Any]] = {}
 
-    for name in sorted(plugin_names(repo, claude_market, codex_market)):
+    names_seen = plugin_names(repo, claude_market, codex_market)
+    for name in sorted(names_seen):
         synced = sync_plugin_manifest(
             repo=repo,
             plugin_name=name,
@@ -605,7 +686,7 @@ def sync_all(repo: Path, base_ref: str) -> tuple[dict[Path, dict[str, Any]], lis
             conflicts=conflicts,
         )
     )
-    return desired, conflicts
+    return desired, conflicts, stale_codex_manifests(repo, names_seen)
 
 
 def validate_plugin_manifests(repo: Path, desired: dict[Path, dict[str, Any]]) -> list[str]:
@@ -655,7 +736,7 @@ def validate_skills(repo: Path) -> list[str]:
 def main() -> int:
     args = parse_args()
     repo = Path.cwd()
-    desired, conflicts = sync_all(repo, args.base_ref)
+    desired, conflicts, stale = sync_all(repo, args.base_ref)
     errors = conflicts + validate_plugin_manifests(repo, desired) + validate_skills(repo)
     if errors:
         print("Plugin metadata sync failed:", file=sys.stderr)
@@ -667,10 +748,12 @@ def main() -> int:
         path for path, payload in desired.items() if read_json(path) != payload
     ]
     if args.check:
-        if changed_paths:
+        if changed_paths or stale:
             print("Plugin metadata is out of sync:")
             for path in sorted(changed_paths):
                 print(f"- {path.relative_to(repo)}")
+            for path in sorted(stale):
+                print(f"- {path.relative_to(repo)} (plugin opted out of Codex)")
             return 1
         print("Plugin metadata is in sync.")
         return 0
@@ -678,7 +761,13 @@ def main() -> int:
     for path in sorted(changed_paths):
         write_json(path, desired[path])
         print(f"synced {path.relative_to(repo)}")
-    if not changed_paths:
+    for path in sorted(stale):
+        path.unlink()
+        # The directory exists only to hold this manifest.
+        if not any(path.parent.iterdir()):
+            path.parent.rmdir()
+        print(f"removed {path.relative_to(repo)} (plugin opted out of Codex)")
+    if not changed_paths and not stale:
         print("Plugin metadata is already in sync.")
     return 0
 

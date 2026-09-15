@@ -1,0 +1,7 @@
+Not published to the Codex marketplace.
+
+The description-optimization workflow shells out to `claude -p`
+(skills/skill-creator/scripts/improve_description.py) and writes Claude Code
+paths, so a Codex entry would advertise a capability that fails there.
+
+Superpowers, by contrast, ships real Codex support and is published normally.

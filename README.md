@@ -77,6 +77,13 @@ fields in either `plugins/<plugin>/.claude-plugin/plugin.json` or
 `plugins/<plugin>/.codex-plugin/plugin.json` are copied to the other side; conflicting edits to
 the same field fail the workflow instead of overwriting.
 
+A plugin opts out of Codex publication with a `plugins/<plugin>/.no-codex-plugin` marker
+file, whose contents record why. The sync then skips its `.codex-plugin/plugin.json`
+(removing one that already exists) and leaves it out of `.agents/plugins/marketplace.json`,
+while keeping it in the Claude marketplace. Use it when a plugin's skills depend on Claude
+Code itself — `skill-creator` shells out to `claude -p`, so a Codex entry would advertise a
+capability that fails there.
+
 Other agents (Gemini, Cursor, OpenCode) use different conventions and are not synced.
 
 ## Doc conventions (doc-driven-development)
