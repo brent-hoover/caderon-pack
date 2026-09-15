@@ -18,8 +18,12 @@ packaging directories for Codex, Cursor, Devin, Hermes, Kimi, Pi, OpenCode, and 
 
 ## Local modifications
 
-This copy is **not** byte-identical to upstream v6.3.0. Re-copying from upstream will
-drop the fixes below, so re-apply them after any update.
+This is a **fork**, not a mirror: it is vendored precisely so it can be iterated on here,
+and it will keep diverging from upstream. Git history is the record of what changed; the
+list below is the divergence from v6.3.0 at the point it was vendored.
+
+Pulling a newer upstream release therefore means merging, not re-copying — a plain
+re-copy silently reverts everything here.
 
 - `skills/writing-skills/render-graphs.js` → `render-graphs.mjs`. It uses ESM `import`
   but the plugin ships no `package.json` declaring `"type": "module"`. Node 22.7+
