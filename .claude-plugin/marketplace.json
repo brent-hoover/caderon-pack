@@ -73,6 +73,12 @@
       "description": "Read and write your Obsidian vault from Claude Code — daily notes, quick capture, and vault browsing via MCP",
       "source": "./plugins/obsidian",
       "category": "workflow"
+    },
+    {
+      "name": "skill-creator",
+      "description": "Create new skills, improve existing skills, and measure skill performance with evals and variance analysis",
+      "source": "./plugins/skill-creator",
+      "category": "development"
     }
   ]
 }
