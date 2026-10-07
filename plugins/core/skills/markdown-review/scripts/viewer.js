@@ -16,7 +16,9 @@
   let currentId = null;
   let currentPath = null;         // path of the doc currentId refers to
   const textCache = new Map();    // path -> doc source
-  const commented = new Map();    // path -> view -> Set(blockIndex for rendered/gherkin, line for source)
+  // Every comment saved this session, in order: [{event, isSent}]. Rebuilt from
+  // GET /events on load; a comment is sent once a submit or approve follows it.
+  let savedComments = [];
   const viewChoice = new Map();   // path -> view the operator toggled to (in-memory; resets on reload)
   const approved = new Map();     // path -> mtime at approval time
   const updated = new Set();      // paths changed since last viewed
@@ -252,11 +254,97 @@
     return viewChoice.get(docPath) || defaultViewFor(docPath);
   }
 
-  function markersFor(docPath, view) {
-    if (!commented.has(docPath)) commented.set(docPath, new Map());
-    const byView = commented.get(docPath);
-    if (!byView.has(view)) byView.set(view, new Set());
-    return byView.get(view);
+  // ===== saved comments =====
+
+  const TRIGGER_EVENT_TYPES = ['submit', 'approve'];
+
+  async function loadSavedComments() {
+    const events = await fetchJson('/events');
+    savedComments = [];
+    events.forEach(event => {
+      if (event.type === 'comment') savedComments.push({ event: event, isSent: false });
+      else if (TRIGGER_EVENT_TYPES.includes(event.type)) markAllSent();
+    });
+    renderSubmitButton();
+  }
+
+  function markAllSent() {
+    savedComments = savedComments.map(saved => ({ event: saved.event, isSent: true }));
+  }
+
+  // Doc-level comments have scope 'doc'; events from pre-view viewers are 'rendered'.
+  function commentView(event) {
+    if (event.scope === 'doc') return 'doc';
+    return event.view || 'rendered';
+  }
+
+  function commentsAt(docPath, view, index) {
+    return savedComments.filter(saved => {
+      const event = saved.event;
+      if (event.doc !== docPath || commentView(event) !== view) return false;
+      if (view === 'doc') return true;
+      return (view === 'source' ? event.line : event.blockIndex) === index;
+    });
+  }
+
+  function renderSubmitButton() {
+    const pendingCount = savedComments.filter(saved => !saved.isSent).length;
+    const btn = $('#submit-comments');
+    btn.textContent = 'Submit comments (' + pendingCount + ')';
+    btn.disabled = pendingCount === 0;
+  }
+
+  function commentCard(saved) {
+    const card = document.createElement('div');
+    card.className = 'comment-card';
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + (saved.isSent ? 'sent' : 'pending');
+    badge.textContent = saved.isSent ? 'sent' : 'pending';
+    card.appendChild(badge);
+    if (saved.event.selection) {
+      const quote = document.createElement('blockquote');
+      quote.className = 'sel';
+      quote.textContent = saved.event.selection;
+      card.appendChild(quote);
+    }
+    const text = document.createElement('div');
+    text.className = 'text';
+    text.textContent = saved.event.comment;
+    card.appendChild(text);
+    return card;
+  }
+
+  // Marks el as commented and shows its comments right after it.
+  function attachComments(el, docPath, view, index) {
+    const comments = commentsAt(docPath, view, index);
+    if (comments.length === 0) return;
+    el.classList.add('commented');
+    const cards = document.createElement('div');
+    cards.className = 'comment-cards';
+    comments.forEach(saved => cards.appendChild(commentCard(saved)));
+    insertAfter(el, cards);
+  }
+
+  function renderDocComments(doc) {
+    const list = $('#doc-comments');
+    list.innerHTML = '';
+    commentsAt(doc.path, 'doc', null).forEach(saved => list.appendChild(commentCard(saved)));
+  }
+
+  // A <div> can't sit between table rows, so after a <tr> the node gets its own
+  // full-width row. Returns the element actually inserted.
+  function insertAfter(el, node) {
+    if (el.tagName !== 'TR') {
+      el.insertAdjacentElement('afterend', node);
+      return node;
+    }
+    const holder = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 2;
+    cell.appendChild(node);
+    holder.appendChild(cell);
+    el.insertAdjacentElement('afterend', holder);
+    return holder;
   }
 
   async function renderDoc(id, opts) {
@@ -271,6 +359,7 @@
     else if (view === 'gherkin') renderGherkin(pane, doc, source);
     else renderRendered(pane, doc, id, source);
     renderHeader(doc, view);
+    renderDocComments(doc);
     pane.scrollTop = scrollTop;
   }
 
@@ -282,26 +371,23 @@
       if (/^([a-z][a-z0-9+.-]*:|\/)/i.test(src)) return;
       img.src = '/asset/' + id + '/' + src.split('/').map(encodeURIComponent).join('/');
     });
-    const marks = markersFor(doc.path, 'rendered');
     Array.from(pane.children).forEach((el, i) => {
       el.classList.add('block');
-      if (marks.has(i)) el.classList.add('commented');
       el.addEventListener('click', (e) => {
         if (e.target.closest('a') || e.target.closest('.popover')) return;
         openPopover(el, { view: 'rendered', blockIndex: i, quote: blockQuote(el) });
       });
+      attachComments(el, doc.path, 'rendered', i);
     });
   }
 
   function renderSource(pane, doc, source) {
     const table = document.createElement('table');
     table.className = 'source';
-    const marks = markersFor(doc.path, 'source');
     source.split('\n').forEach((text, index) => {
       const line = index + 1;
       const row = document.createElement('tr');
       row.className = 'block';
-      if (marks.has(line)) row.classList.add('commented');
       const number = document.createElement('td');
       number.className = 'ln';
       number.textContent = String(line);
@@ -315,19 +401,18 @@
         openPopover(row, { view: 'source', line: line, quote: text.trim().slice(0, QUOTE_MAX_CHARS) });
       });
       table.appendChild(row);
+      attachComments(row, doc.path, 'source', line);
     });
     pane.innerHTML = '';
     pane.appendChild(table);
   }
 
   function renderGherkin(pane, doc, source) {
-    const marks = markersFor(doc.path, 'gherkin');
     pane.innerHTML = '';
     parseGherkinBlocks(source).forEach((block, i) => {
       const el = document.createElement('div');
       el.className = 'block gherkin-block';
       el.dataset.kind = block.kind;
-      if (marks.has(i)) el.classList.add('commented');
       appendGherkinLines(el, block.lines);
       const header = el.querySelector('.gl-keyword');
       if (header) header.classList.add('gl-header');
@@ -336,6 +421,7 @@
         openPopover(el, gherkinAnchor(block, i));
       });
       pane.appendChild(el);
+      attachComments(el, doc.path, 'gherkin', i);
     });
   }
 
@@ -430,7 +516,7 @@
 
   function closePopover() {
     if (!popover) return;
-    (popover.holder || popover).remove();
+    popover.inserted.remove();
     popover = null;
   }
 
@@ -460,28 +546,13 @@
     save.onclick = () => {
       const comment = ta.value.trim();
       if (!comment) return;
-      const doc = docs[currentId];
-      sendEvent(Object.assign({ type: 'comment', doc: doc.path }, anchor, { selection: selection, comment: comment }));
-      markersFor(doc.path, anchor.view).add(anchor.view === 'source' ? anchor.line : anchor.blockIndex);
-      el.classList.add('commented');
-      closePopover();
-      flash('Comment saved');
+      saveComment(Object.assign({ type: 'comment', doc: docs[currentId].path }, anchor,
+        { selection: selection, comment: comment }));
     };
     row.appendChild(save);
     row.appendChild(cancel);
     popover.appendChild(row);
-    if (el.tagName === 'TR') {
-      // A <div> can't sit between table rows; give the popover its own full-width row.
-      const holder = document.createElement('tr');
-      const cell = document.createElement('td');
-      cell.colSpan = 2;
-      cell.appendChild(popover);
-      holder.appendChild(cell);
-      el.insertAdjacentElement('afterend', holder);
-      popover.holder = holder;
-    } else {
-      el.insertAdjacentElement('afterend', popover);
-    }
+    popover.inserted = insertAfter(el, popover);
     ta.focus();
   }
 
@@ -542,13 +613,31 @@
 
   // ===== doc-level controls =====
 
+  // Saved comments wait in the browser's view and the events file until
+  // Submit or Approve; only those wake the agent.
+  function saveComment(event) {
+    sendEvent(event);
+    savedComments.push({ event: event, isSent: false });
+    closePopover();
+    renderSubmitButton();
+    renderDoc(currentId, { preserveScroll: true });
+    flash('Comment saved — Submit to send it to the agent');
+  }
+
   $('#send-doc-comment').onclick = () => {
     const ta = $('#doc-comment');
     const comment = ta.value.trim();
     if (!comment || currentId === null) return;
-    sendEvent({ type: 'comment', doc: docs[currentId].path, scope: 'doc', comment: comment });
     ta.value = '';
-    flash('Comment sent');
+    saveComment({ type: 'comment', doc: docs[currentId].path, scope: 'doc', comment: comment });
+  };
+
+  $('#submit-comments').onclick = () => {
+    sendEvent({ type: 'submit' });
+    markAllSent();
+    renderSubmitButton();
+    if (currentId !== null) renderDoc(currentId, { preserveScroll: true });
+    flash('Comments sent to the agent');
   };
 
   $('#view-toggle').onclick = () => {
@@ -563,6 +652,8 @@
     if (currentId === null) return;
     const doc = docs[currentId];
     sendEvent({ type: 'approve', doc: doc.path });
+    markAllSent();
+    renderSubmitButton();
     approved.set(doc.path, doc.mtime);
     renderSidebar();
     renderDoc(currentId, { preserveScroll: true });
@@ -570,5 +661,5 @@
   };
 
   connect();
-  refreshDocs();
+  loadSavedComments().then(refreshDocs);
 })();

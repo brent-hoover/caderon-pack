@@ -322,7 +322,10 @@ server restart) rings "Feedback submitted".
 
 ### 11. Viewer: Submit button and comment cards
 
-**Status:** ☐
+**Status:** ☑ — Chromium (Playwright): cards appear *pending* in the view they were made in
+(gherkin, source, rendered) and only there; doc-level card listed above the footer; count 0 → 4,
+survives reload; Submit → *sent*, count 0, survives reload; no page errors; screenshot checked.
+Doc-level button relabelled "Add comment" (it no longer sends to the agent).
 
 **What:** `scripts/viewer.js`, `scripts/viewer.html` (design §3 *Submit comments*, *Comment
 cards*).
