@@ -328,8 +328,9 @@ delivery keep us below Optimal.
 - **`GET /events` exposes comment text** — to anyone holding the session key, who can already write
   events; no new exposure.
 - **Repeated quotes (accepted)** — card placement for identical text is a heuristic: `occurrence`,
-  then the match nearest the original position. Insertions and deletions are handled; editing an
-  earlier identical copy moves the card to the next copy (roborev 3876). Position-first was tried
+  then the match nearest the original position. Inserting or deleting other content is handled;
+  editing or deleting an earlier identical copy moves the card to the next copy (roborev 3876,
+  3882). Position-first was tried
   and reverted: it mis-placed cards when lines were inserted next to adjacent duplicates (roborev
   3879). No edit diffing; operator chose occurrence-first 2026-10-07.
 - **Agent forgets to re-arm** — the next batch is not acted on until the operator types (today's
