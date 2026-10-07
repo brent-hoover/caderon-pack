@@ -95,6 +95,9 @@ const SESSION_DIR = process.env.MDREVIEW_DIR || '/tmp/md-review';
 const MANIFEST_FILE = path.join(SESSION_DIR, 'manifest.json');
 const STATE_DIR = path.join(SESSION_DIR, 'state');
 let ownerPid = process.env.MDREVIEW_OWNER_PID ? Number(process.env.MDREVIEW_OWNER_PID) : null;
+// Set when the agent that started the server runs inside cmux; enables the feedback ring.
+const CMUX_SURFACE_ID = process.env.CMUX_SURFACE_ID || null;
+const CMUX_BIN = process.env.MDREVIEW_CMUX_BIN || 'cmux';
 
 const TOKEN_FILE = process.env.MDREVIEW_TOKEN_FILE || null;
 function generateToken() {
@@ -457,7 +460,45 @@ function handleMessage(text) {
   // by the server — the agent truncates it after reading.
   if (event && (event.type === 'comment' || event.type === 'approve')) {
     fs.appendFileSync(path.join(STATE_DIR, 'events'), JSON.stringify(event) + '\n');
+    if (CMUX_SURFACE_ID) scheduleCmuxRing(event);
   }
+}
+
+// ========== cmux ring ==========
+
+// Same quiet window as wait-for-feedback.cjs, so one review burst rings once.
+const RING_QUIET_MS = 2000;
+let pendingBurst = null;
+let ringTimer = null;
+
+function scheduleCmuxRing(event) {
+  if (!pendingBurst) pendingBurst = { comments: 0, approvals: 0, docs: [] };
+  if (event.type === 'comment') pendingBurst.comments++;
+  else pendingBurst.approvals++;
+  const docName = path.basename(String(event.doc));
+  if (!pendingBurst.docs.includes(docName)) pendingBurst.docs.push(docName);
+  if (ringTimer) clearTimeout(ringTimer);
+  ringTimer = setTimeout(ringCmuxSurface, RING_QUIET_MS);
+}
+
+function ringCmuxSurface() {
+  const body = describeBurst(pendingBurst);
+  pendingBurst = null;
+  ringTimer = null;
+  // execFile, not exec: the body carries doc names sent by the browser.
+  // --desktop false: pane ring + sidebar badge without a macOS banner.
+  const args = ['notify', '--surface', CMUX_SURFACE_ID, '--title', 'Review feedback',
+    '--body', body, '--desktop', 'false'];
+  require('child_process').execFile(CMUX_BIN, args, (err) => {
+    if (err) console.log(JSON.stringify({ type: 'cmux-notify-failed', bin: CMUX_BIN, error: err.message }));
+  });
+}
+
+function describeBurst(burst) {
+  const parts = [];
+  if (burst.comments > 0) parts.push(burst.comments + (burst.comments === 1 ? ' comment' : ' comments'));
+  if (burst.approvals > 0) parts.push(burst.approvals + (burst.approvals === 1 ? ' approval' : ' approvals'));
+  return parts.join(', ') + ' on ' + burst.docs.join(', ');
 }
 
 function broadcast(msg) {

@@ -30,6 +30,23 @@ function waitForStart(p) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// Running the suite inside cmux must never ring the operator's real surface,
+// so CMUX_SURFACE_ID is dropped unless a test passes it explicitly.
+function spawnServer(dir, token, extraEnv = {}) {
+  const env = { ...process.env, MDREVIEW_DIR: dir, MDREVIEW_TOKEN: token, MDREVIEW_LIFECYCLE_CHECK_MS: '600000' };
+  delete env.CMUX_SURFACE_ID;
+  return spawn('node', [path.join(SCRIPTS, 'server.cjs')], { env: { ...env, ...extraEnv } });
+}
+
+function sendReviewEvent(port, token, event) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket('ws://127.0.0.1:' + port + '/?key=' + token);
+    ws.onopen = () => { ws.send(JSON.stringify(event)); ws.close(); };
+    ws.onclose = () => resolve();
+    ws.onerror = (e) => reject(new Error('websocket error sending ' + event.type + ': ' + e.message));
+  });
+}
+
 before(async () => {
   sessionDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-test-'));
   docsDir = path.join(sessionDir, 'docs');
@@ -42,9 +59,7 @@ before(async () => {
   stateDir = path.join(sessionDir, 'state');
   fs.writeFileSync(manifestFile, JSON.stringify([path.join(docsDir, 'plan.md')]));
 
-  proc = spawn('node', [path.join(SCRIPTS, 'server.cjs')], {
-    env: { ...process.env, MDREVIEW_DIR: sessionDir, MDREVIEW_TOKEN: TOKEN, MDREVIEW_LIFECYCLE_CHECK_MS: '600000' }
-  });
+  proc = spawnServer(sessionDir, TOKEN);
   const info = await waitForStart(proc);
   base = 'http://127.0.0.1:' + info.port;
   cookie = 'mdreview-key-' + info.port + '=' + TOKEN;
@@ -139,9 +154,7 @@ test('resolveAsset unit: accepts inside, rejects outside and bad ext', () => {
 test('SIGTERM runs the shutdown handler: writes server-stopped, removes server-info', async () => {
   const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-test2-'));
   const stateDir2 = path.join(dir2, 'state');
-  const proc2 = spawn('node', [path.join(SCRIPTS, 'server.cjs')], {
-    env: { ...process.env, MDREVIEW_DIR: dir2, MDREVIEW_TOKEN: 'b'.repeat(64), MDREVIEW_LIFECYCLE_CHECK_MS: '600000' }
-  });
+  const proc2 = spawnServer(dir2, 'b'.repeat(64));
   await waitForStart(proc2);
 
   const exited = new Promise((resolve, reject) => {
@@ -176,4 +189,75 @@ test('WS upgrade without a key/cookie is rejected before the 101 response', asyn
   await closed;
   const data = Buffer.concat(chunks).toString();
   assert.ok(!data.startsWith('HTTP/1.1 101'));
+});
+
+test('Given events was renamed away, when a comment arrives, then a new events file holds it', async () => {
+  const port = Number(base.split(':').pop());
+  const eventsFile = path.join(stateDir, 'events');
+  if (fs.existsSync(eventsFile)) fs.renameSync(eventsFile, eventsFile + '.claimed-test');
+  await sendReviewEvent(port, TOKEN, { type: 'comment', doc: '/x/plan.md', scope: 'doc', comment: 'after rename' });
+  await sleep(300);
+  assert.match(fs.readFileSync(eventsFile, 'utf-8'), /after rename/);
+});
+
+
+const RING_SETTLE_MAX_MS = 3000;
+
+function startRingServer(extraEnv) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-ring-'));
+  const callsFile = path.join(dir, 'cmux-calls');
+  const stub = path.join(dir, 'cmux-stub.sh');
+  const exitCode = extraEnv.STUB_EXIT || '0';
+  fs.writeFileSync(stub, '#!/bin/sh\nprintf "%s\\n" "$*" >> "' + callsFile + '"\nexit ' + exitCode + '\n', { mode: 0o755 });
+  const token = 'c'.repeat(64);
+  const p = spawnServer(dir, token, { MDREVIEW_CMUX_BIN: stub, ...extraEnv });
+  let stdout = '';
+  p.stdout.on('data', (d) => { stdout += d.toString(); });
+  return { p, token, callsFile, stateDir: path.join(dir, 'state'), stdout: () => stdout };
+}
+
+function readCalls(callsFile) {
+  return fs.existsSync(callsFile) ? fs.readFileSync(callsFile, 'utf-8').trim().split('\n').filter(Boolean) : [];
+}
+
+test('Given cmux, when a burst of 3 comments and 1 approve arrives, then one ring summarises it', async () => {
+  const ring = startRingServer({ CMUX_SURFACE_ID: 'test-surface' });
+  try {
+    const info = await waitForStart(ring.p);
+    const send = (e) => sendReviewEvent(info.port, ring.token, e);
+    await send({ type: 'comment', doc: '/d/a.md', blockIndex: 1, quote: 'q', comment: 'one' });
+    await send({ type: 'comment', doc: '/d/a.md', blockIndex: 2, quote: 'q', comment: 'two' });
+    await send({ type: 'comment', doc: '/d/a.md', scope: 'doc', comment: 'three' });
+    await send({ type: 'approve', doc: '/d/b.md' });
+    const lastSent = Date.now();
+    await sleep(1700);
+    assert.deepStrictEqual(readCalls(ring.callsFile), [], 'rang before the quiet window ended');
+    while (readCalls(ring.callsFile).length === 0 && Date.now() - lastSent < RING_SETTLE_MAX_MS) await sleep(50);
+    assert.ok(Date.now() - lastSent < RING_SETTLE_MAX_MS, 'no ring within 3s of the last event');
+    await sleep(500);
+    assert.deepStrictEqual(readCalls(ring.callsFile), [
+      'notify --surface test-surface --title Review feedback --body 3 comments, 1 approval on a.md, b.md --desktop false'
+    ]);
+  } finally { ring.p.kill(); }
+});
+
+test('Given no CMUX_SURFACE_ID, when a comment arrives, then cmux is never called', async () => {
+  const ring = startRingServer({});
+  try {
+    const info = await waitForStart(ring.p);
+    await sendReviewEvent(info.port, ring.token, { type: 'comment', doc: '/d/a.md', scope: 'doc', comment: 'x' });
+    await sleep(RING_SETTLE_MAX_MS);
+    assert.deepStrictEqual(readCalls(ring.callsFile), []);
+  } finally { ring.p.kill(); }
+});
+
+test('Given the cmux call fails, when a comment arrives, then the failure is logged and the event kept', async () => {
+  const ring = startRingServer({ CMUX_SURFACE_ID: 'test-surface', STUB_EXIT: '1' });
+  try {
+    const info = await waitForStart(ring.p);
+    await sendReviewEvent(info.port, ring.token, { type: 'comment', doc: '/d/a.md', scope: 'doc', comment: 'kept' });
+    await sleep(RING_SETTLE_MAX_MS);
+    assert.match(ring.stdout(), /"type":"cmux-notify-failed"/);
+    assert.match(fs.readFileSync(path.join(ring.stateDir, 'events'), 'utf-8'), /kept/);
+  } finally { ring.p.kill(); }
 });
