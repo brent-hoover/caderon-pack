@@ -85,32 +85,47 @@ function sessionPaths(sessionDir) {
 
 function watch(session, quietMs) {
   const timer = setInterval(() => {
-    if (!fs.existsSync(session.stateDir)) {
-      clearInterval(timer);
-      emitThenExit(stoppedLine('session-removed'), EXIT_SERVER_STOPPED);
-      return;
-    }
-    const unread = readUnreadEvents(session);
-    if (unread.text && msSinceEventsModified(session) >= quietMs) {
-      clearInterval(timer);
-      deliver(session, unread, '', EXIT_DELIVERED);
-      return;
-    }
-    if (fs.existsSync(session.stoppedFile)) {
-      clearInterval(timer);
-      deliver(session, unread, stoppedLine(readStopReason(session)), EXIT_SERVER_STOPPED);
-    }
+    const outcome = pollOnce(session, quietMs);
+    if (outcome === null) return;
+    clearInterval(timer);
+    deliver(session, outcome);
   }, POLL_INTERVAL_MS);
+}
+
+// Returns what to deliver and how to exit, or null to keep waiting.
+function pollOnce(session, quietMs) {
+  try {
+    if (!fs.existsSync(session.stateDir)) return sessionRemovedOutcome();
+    // Check for a stop before reading events: the server appends its last
+    // events before writing server-stopped, so this order cannot miss them.
+    const stopReason = readStopReason(session);
+    const unread = readUnreadEvents(session);
+    if (stopReason !== null) return { unread, trailer: stoppedLine(stopReason), exitCode: EXIT_SERVER_STOPPED };
+    if (unread.text && msSinceEventsModified(session) >= quietMs) {
+      return { unread, trailer: '', exitCode: EXIT_DELIVERED };
+    }
+    return null;
+  } catch (e) {
+    // stop-server.sh deletes /tmp sessions; that can land between any two
+    // file operations above.
+    if (e.code === 'ENOENT' && !fs.existsSync(session.stateDir)) return sessionRemovedOutcome();
+    throw e;
+  }
+}
+
+function sessionRemovedOutcome() {
+  return { unread: { text: '', endOffset: 0 }, trailer: stoppedLine('session-removed'), exitCode: EXIT_SERVER_STOPPED };
 }
 
 // Print before saving the cursor: a crash in between re-delivers the batch on
 // the next run (at-least-once) instead of losing it.
-function deliver(session, unread, trailer, exitCode) {
-  const output = unread.text + trailer;
-  process.stdout.write(output, () => {
-    if (unread.text) saveCursor(session, unread.endOffset);
-    releaseWatcherLock(session);
-    process.exit(exitCode);
+function deliver(session, outcome) {
+  process.stdout.write(outcome.unread.text + outcome.trailer, () => {
+    if (fs.existsSync(session.stateDir)) {
+      if (outcome.unread.text) saveCursor(session, outcome.unread.endOffset);
+      releaseWatcherLock(session);
+    }
+    process.exit(outcome.exitCode);
   });
 }
 
@@ -151,8 +166,22 @@ function msSinceEventsModified(session) {
   return Date.now() - fs.statSync(session.eventsFile).mtimeMs;
 }
 
+// Returns null while the server is running. The server writes server-stopped
+// in place, so a poll can see it half-written; that also reads as "not yet".
 function readStopReason(session) {
-  return JSON.parse(fs.readFileSync(session.stoppedFile, 'utf-8')).reason || 'unknown';
+  let marker;
+  try {
+    marker = fs.readFileSync(session.stoppedFile, 'utf-8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+  try {
+    return JSON.parse(marker).reason || 'unknown';
+  } catch (e) {
+    if (e instanceof SyntaxError) return null;
+    throw e;
+  }
 }
 
 function stoppedLine(reason) {
@@ -161,20 +190,27 @@ function stoppedLine(reason) {
 
 // Returns the pid that owns the session after the attempt: ours on success,
 // the live owner's otherwise.
+//
+// The pid is written to a private temp file and hard-linked into place, so
+// watcher.pid never exists without its pid — an empty or dead-pid file can
+// only be left by a watcher that was killed, and is safe to replace.
+// Not guarded: two watchers recovering the same stale lock at the same
+// instant. The agent checks --status before arming, so it never starts two.
 function acquireWatcherLock(session) {
   const ownerPid = readWatcherPid(session);
   if (ownerPid !== null && isProcessAlive(ownerPid)) return ownerPid;
-  if (ownerPid !== null) fs.rmSync(session.pidFile, { force: true }); // stale: owner died without cleanup
-  let fd;
+  fs.rmSync(session.pidFile, { force: true });
+  const tmpFile = session.pidFile + '.' + process.pid;
+  fs.writeFileSync(tmpFile, String(process.pid), { mode: 0o600 });
   try {
-    fd = fs.openSync(session.pidFile, 'wx', 0o600);
+    fs.linkSync(tmpFile, session.pidFile);
   } catch (e) {
     if (e.code !== 'EEXIST') throw e;
-    // Another watcher created the file between our check and our create.
+    // Another watcher published its lock between our check and our link.
     return readWatcherPid(session);
+  } finally {
+    fs.rmSync(tmpFile, { force: true });
   }
-  fs.writeSync(fd, String(process.pid));
-  fs.closeSync(fd);
   return process.pid;
 }
 

@@ -224,3 +224,27 @@ test('Given a half-written line, when the watcher runs, then it delivers only co
   const second = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
   assert.strictEqual(second.stdout, partial);
 });
+
+test('Given an empty pid file left by a killed watcher, when a watcher starts, then it takes over the lock', async () => {
+  const s = makeSession();
+  fs.writeFileSync(path.join(s.stateDir, 'watcher.pid'), '');
+  const w = startWatcher(['--session-dir', s.sessionDir]);
+  await sleep(500);
+  assert.ok(w.isRunning(), 'watcher refused an abandoned empty lock');
+  assert.strictEqual(fs.readFileSync(path.join(s.stateDir, 'watcher.pid'), 'utf-8').trim(), String(w.child.pid));
+  w.child.kill('SIGTERM');
+  await w.exited;
+});
+
+test('Given a half-written server-stopped marker, when watching, then it waits for the complete marker', async () => {
+  const s = makeSession();
+  const stoppedFile = path.join(s.stateDir, 'server-stopped');
+  fs.writeFileSync(stoppedFile, '{"reas');
+  const w = startWatcher(['--session-dir', s.sessionDir]);
+  await sleep(700);
+  assert.ok(w.isRunning(), 'watcher gave up on an incomplete marker');
+  fs.writeFileSync(stoppedFile, JSON.stringify({ reason: 'signal', timestamp: 1 }) + '\n');
+  const run = await w.exited;
+  assert.strictEqual(run.code, 3);
+  assert.strictEqual(run.stdout, '{"type":"server-stopped","reason":"signal"}\n');
+});

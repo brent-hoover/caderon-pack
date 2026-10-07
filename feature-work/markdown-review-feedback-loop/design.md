@@ -34,10 +34,11 @@ browser ──ws──▶ server.cjs ──appendFileSync──▶ state/events
                  └── re-arms at end of turn (run_in_background), if none running
 ```
 
-**One watcher per session.** On start the watcher creates `state/watcher.pid` with exclusive-create
-(`fs.openSync(…, 'wx')`). If the file exists and names a live process, the watcher prints
-`{"type":"already-watching","pid":N}` and exits 4. A pid file naming a dead process is stale: it is
-replaced. The watcher removes its pid file on every exit path. So that the agent does not even start
+**One watcher per session.** On start the watcher writes its pid to a private temp file and
+hard-links it to `state/watcher.pid` (`link` fails if the file exists, and the file is never seen
+without its pid). If `watcher.pid` names a live process, the watcher prints
+`{"type":"already-watching","pid":N}` and exits 4. An empty pid file or one naming a dead process
+can only be left by a killed watcher: it is replaced. The watcher removes its pid file on every exit path. So that the agent does not even start
 a duplicate (whose immediate exit would itself wake the agent), `--status` runs in the foreground and
 prints `{"watching":true|false}` without waiting; the agent checks it before arming.
 
@@ -49,14 +50,18 @@ cursor (truncated by an agent following the pre-1.7 contract), the cursor resets
 
 **Wait loop**, polling every 250ms:
 
-1. If `state/` no longer exists → print `{"type":"server-stopped","reason":"session-removed"}`,
+1. If `state/` no longer exists — checked at the start of each poll, and on any ENOENT during one —
+   → print `{"type":"server-stopped","reason":"session-removed"}`,
    exit 3. (`stop-server.sh` deletes `/tmp/md-review-*` session dirs; without this the watcher would
    poll forever.)
 2. If there are unread events and `events` was last modified ≥ `--quiet-ms` (default 2000) ago →
    deliver (below), exit 0.
-3. Else if `state/server-stopped` exists → deliver any unread events regardless of the quiet window,
-   then print `{"type":"server-stopped","reason":<reason from server-stopped>}`, exit 3. Delivering
-   first means feedback sent just before a stop is never dropped.
+3. Else if `state/server-stopped` holds a complete JSON marker → deliver any unread events
+   regardless of the quiet window, then print
+   `{"type":"server-stopped","reason":<reason from server-stopped>}`, exit 3. The marker is checked
+   *before* events are read (the server appends its last events before writing the marker), and a
+   half-written marker counts as "not stopped yet", so feedback sent just before a stop is never
+   dropped.
 4. Otherwise keep polling.
 
 **Deliver**: write the unread lines to stdout, then save the new offset by writing
@@ -257,6 +262,9 @@ delivery keep us below Optimal.
 
 ## Risks
 
+- **Concurrent stale-lock recovery (accepted)** — two watchers started at the same instant, both
+  finding the same dead pid, can both take the lock. The agent's `--status`-then-arm sequence never
+  starts two at once. (roborev jobs 3853, 3856)
 - **Duplicate delivery** — delivery is at-least-once: a watcher killed between printing and saving
   the cursor re-delivers that batch next time. The agent may see an event twice; it never misses one.
 - **Partial writes** — a line still being written when the watcher reads has no trailing `\n` yet;
@@ -308,3 +316,6 @@ delivery keep us below Optimal.
 - 2026-10-07: roborev (job 3848) — replaced the rename claim with an append-only `events` + read
   cursor (a stalled writer could lose an event after the 200ms settle); delivery is at-least-once;
   watcher exits 3 `session-removed` when a `/tmp` session dir is deleted. Approved by operator.
+- 2026-10-07: roborev (jobs 3853, 3856) — lock published by hard link (no empty pid file; empty or
+  dead-pid lock is replaced); stop marker checked before reading events and a partial marker means
+  "not yet"; ENOENT mid-poll routes to `session-removed`. Concurrent stale-lock recovery accepted.
