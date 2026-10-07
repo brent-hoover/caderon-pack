@@ -15,8 +15,9 @@
   let docs = [];                  // [{id, path, mtime}] from GET /docs
   let currentId = null;
   let currentPath = null;         // path of the doc currentId refers to
-  const textCache = new Map();    // path -> markdown source
-  const commented = new Map();    // path -> Set(blockIndex)
+  const textCache = new Map();    // path -> doc source
+  const commented = new Map();    // path -> view -> Set(blockIndex for rendered/gherkin, line for source)
+  const viewChoice = new Map();   // path -> view the operator toggled to (in-memory; resets on reload)
   const approved = new Map();     // path -> mtime at approval time
   const updated = new Set();      // paths changed since last viewed
   let popover = null;
@@ -224,44 +225,108 @@
     renderSidebar();
   }
 
+  // Views: 'rendered' (markdown via marked) and 'source' (numbered lines).
+  const MARKDOWN_EXTENSIONS = ['.md', '.markdown'];
+  const TOGGLEABLE_EXTENSIONS = MARKDOWN_EXTENSIONS;
+
+  function extensionOf(docPath) {
+    const name = docPath.split('/').pop();
+    const dot = name.lastIndexOf('.');
+    return dot > 0 ? name.slice(dot).toLowerCase() : '';
+  }
+
+  function defaultViewFor(docPath) {
+    return MARKDOWN_EXTENSIONS.includes(extensionOf(docPath)) ? 'rendered' : 'source';
+  }
+
+  function currentViewFor(docPath) {
+    return viewChoice.get(docPath) || defaultViewFor(docPath);
+  }
+
+  function markersFor(docPath, view) {
+    if (!commented.has(docPath)) commented.set(docPath, new Map());
+    const byView = commented.get(docPath);
+    if (!byView.has(view)) byView.set(view, new Set());
+    return byView.get(view);
+  }
+
   async function renderDoc(id, opts) {
     const doc = docs[id];
     if (!doc) return;
     const pane = $('#doc');
     const scrollTop = opts.preserveScroll ? pane.scrollTop : 0;
     closePopover();
-    pane.innerHTML = marked.parse(await docText(doc));
+    const source = await docText(doc);
+    const view = currentViewFor(doc.path);
+    if (view === 'source') renderSource(pane, doc, source);
+    else renderRendered(pane, doc, id, source);
+    renderHeader(doc, view);
+    pane.scrollTop = scrollTop;
+  }
 
+  function renderRendered(pane, doc, id, source) {
+    pane.innerHTML = marked.parse(source);
     pane.querySelectorAll('img').forEach(img => {
       const src = img.getAttribute('src') || '';
       // leave absolute URLs (scheme:), root paths, and data: alone
       if (/^([a-z][a-z0-9+.-]*:|\/)/i.test(src)) return;
       img.src = '/asset/' + id + '/' + src.split('/').map(encodeURIComponent).join('/');
     });
-
-    const marks = commented.get(doc.path) || new Set();
+    const marks = markersFor(doc.path, 'rendered');
     Array.from(pane.children).forEach((el, i) => {
       el.classList.add('block');
-      el.dataset.block = i;
       if (marks.has(i)) el.classList.add('commented');
       el.addEventListener('click', (e) => {
         if (e.target.closest('a') || e.target.closest('.popover')) return;
-        openPopover(el, i);
+        openPopover(el, { view: 'rendered', blockIndex: i, quote: blockQuote(el) });
       });
     });
+  }
 
+  function renderSource(pane, doc, source) {
+    const table = document.createElement('table');
+    table.className = 'source';
+    const marks = markersFor(doc.path, 'source');
+    source.split('\n').forEach((text, index) => {
+      const line = index + 1;
+      const row = document.createElement('tr');
+      row.className = 'block';
+      if (marks.has(line)) row.classList.add('commented');
+      const number = document.createElement('td');
+      number.className = 'ln';
+      number.textContent = String(line);
+      const code = document.createElement('td');
+      code.className = 'code';
+      code.textContent = text;
+      row.appendChild(number);
+      row.appendChild(code);
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.popover')) return;
+        openPopover(row, { view: 'source', line: line, quote: text.trim().slice(0, QUOTE_MAX_CHARS) });
+      });
+      table.appendChild(row);
+    });
+    pane.innerHTML = '';
+    pane.appendChild(table);
+  }
+
+  function renderHeader(doc, view) {
     const isApproved = approved.has(doc.path);
     $('#docheader').textContent = titleFor(doc) + (isApproved ? '  ✓ approved' : '');
     const btn = $('#approve');
     btn.textContent = isApproved ? 'Approved ✓' : 'Approve';
     btn.classList.toggle('approved', isApproved);
-    pane.scrollTop = scrollTop;
+    const toggle = $('#view-toggle');
+    toggle.hidden = !TOGGLEABLE_EXTENSIONS.includes(extensionOf(doc.path));
+    toggle.textContent = view === 'source' ? 'Rendered' : 'Source';
   }
 
   // ===== comments =====
 
+  const QUOTE_MAX_CHARS = 120;
+
   function blockQuote(el) {
-    return el.textContent.trim().replace(/\s+/g, ' ').slice(0, 120);
+    return el.textContent.trim().replace(/\s+/g, ' ').slice(0, QUOTE_MAX_CHARS);
   }
 
   function selectionWithin(el) {
@@ -271,10 +336,13 @@
   }
 
   function closePopover() {
-    if (popover) { popover.remove(); popover = null; }
+    if (!popover) return;
+    (popover.holder || popover).remove();
+    popover = null;
   }
 
-  function openPopover(el, index) {
+  // anchor: { view, quote, blockIndex? , line? } — copied onto the comment event.
+  function openPopover(el, anchor) {
     closePopover();
     const selection = selectionWithin(el);
     popover = document.createElement('div');
@@ -300,9 +368,8 @@
       const comment = ta.value.trim();
       if (!comment) return;
       const doc = docs[currentId];
-      sendEvent({ type: 'comment', doc: doc.path, blockIndex: index, quote: blockQuote(el), selection: selection, comment: comment });
-      if (!commented.has(doc.path)) commented.set(doc.path, new Set());
-      commented.get(doc.path).add(index);
+      sendEvent(Object.assign({ type: 'comment', doc: doc.path }, anchor, { selection: selection, comment: comment }));
+      markersFor(doc.path, anchor.view).add(anchor.view === 'source' ? anchor.line : anchor.blockIndex);
       el.classList.add('commented');
       closePopover();
       flash('Comment saved');
@@ -310,7 +377,18 @@
     row.appendChild(save);
     row.appendChild(cancel);
     popover.appendChild(row);
-    el.insertAdjacentElement('afterend', popover);
+    if (el.tagName === 'TR') {
+      // A <div> can't sit between table rows; give the popover its own full-width row.
+      const holder = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 2;
+      cell.appendChild(popover);
+      holder.appendChild(cell);
+      el.insertAdjacentElement('afterend', holder);
+      popover.holder = holder;
+    } else {
+      el.insertAdjacentElement('afterend', popover);
+    }
     ta.focus();
   }
 
@@ -336,6 +414,14 @@
     sendEvent({ type: 'comment', doc: docs[currentId].path, scope: 'doc', comment: comment });
     ta.value = '';
     flash('Comment sent');
+  };
+
+  $('#view-toggle').onclick = () => {
+    if (currentId === null) return;
+    const doc = docs[currentId];
+    const next = currentViewFor(doc.path) === 'source' ? defaultViewFor(doc.path) : 'source';
+    viewChoice.set(doc.path, next);
+    renderDoc(currentId, { preserveScroll: false });
   };
 
   $('#approve').onclick = () => {

@@ -168,7 +168,10 @@ Examples table, a doc string containing `#`, comments between scenarios, one unr
 
 ### 5a. Viewer: renderer dispatch and Source view
 
-**Status:** ☐
+**Status:** ☑ — verified in Chromium (Playwright): `.txt`/`.feature` show numbered source with the
+toggle hidden; `.md` toggles both ways; source comment emitted `view:"source"`, `line:3`; rendered
+comment `view:"rendered"`, `blockIndex:1`; markers stay per view. cmux-browser check batched with
+5b–6.
 
 **What:** `scripts/viewer.js`, `scripts/viewer.html`.
 
