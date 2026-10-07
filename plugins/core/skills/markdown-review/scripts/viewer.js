@@ -19,6 +19,7 @@
   // Every comment saved this session, in order: [{event, isSent}]. Rebuilt from
   // GET /events on load; a comment is sent once a submit or approve follows it.
   let savedComments = [];
+  let currentOrphans = [];        // comments of the current doc/view whose text is gone
   const viewChoice = new Map();   // path -> view the operator toggled to (in-memory; resets on reload)
   const approved = new Map();     // path -> mtime at approval time
   const updated = new Set();      // paths changed since last viewed
@@ -382,9 +383,9 @@
     if (view === 'source') anchors = renderSource(pane, source);
     else if (view === 'gherkin') anchors = renderGherkin(pane, source);
     else anchors = renderRendered(pane, id, source);
-    const orphans = attachCommentCards(doc.path, view, anchors);
+    currentOrphans = attachCommentCards(doc.path, view, anchors);
     renderHeader(doc, view);
-    renderDocComments(doc, orphans);
+    renderDocComments(doc, currentOrphans);
     pane.scrollTop = scrollTop;
   }
 
@@ -576,7 +577,7 @@
     save.onclick = () => {
       const comment = ta.value.trim();
       if (!comment) return;
-      saveComment(Object.assign({ type: 'comment', doc: docs[currentId].path }, anchor,
+      saveInlineComment(Object.assign({ type: 'comment', doc: docs[currentId].path }, anchor,
         { selection: selection, comment: comment }));
     };
     row.appendChild(save);
@@ -655,13 +656,35 @@
 
   // Saved comments wait in the browser's view and the events file until
   // Submit or Approve; only those wake the agent.
-  function saveComment(event) {
+  const SAVED_TOAST = 'Comment saved — Submit to send it to the agent';
+
+  function recordComment(event) {
     sendEvent(event);
     savedComments.push({ event: event, isSent: false });
-    closePopover();
     renderSubmitButton();
+  }
+
+  // The popover being saved is the only open draft, so a full re-render is safe.
+  function saveInlineComment(event) {
+    recordComment(event);
+    closePopover();
     renderDoc(currentId, { preserveScroll: true });
-    flash('Comment saved — Submit to send it to the agent');
+    flash(SAVED_TOAST);
+  }
+
+  // Doc-level comments, Submit and Approve update the page in place: an inline
+  // comment draft may be open, and re-rendering the doc would destroy it.
+  function saveDocComment(event) {
+    recordComment(event);
+    renderDocComments(docs[currentId], currentOrphans);
+    flash(SAVED_TOAST);
+  }
+
+  function showAllCardsSent() {
+    document.querySelectorAll('.comment-card .badge.pending').forEach(badge => {
+      badge.className = 'badge sent';
+      badge.textContent = 'sent';
+    });
   }
 
   $('#send-doc-comment').onclick = () => {
@@ -669,14 +692,14 @@
     const comment = ta.value.trim();
     if (!comment || currentId === null) return;
     ta.value = '';
-    saveComment({ type: 'comment', doc: docs[currentId].path, scope: 'doc', comment: comment });
+    saveDocComment({ type: 'comment', doc: docs[currentId].path, scope: 'doc', comment: comment });
   };
 
   $('#submit-comments').onclick = () => {
     sendEvent({ type: 'submit' });
     markAllSent();
     renderSubmitButton();
-    if (currentId !== null) renderDoc(currentId, { preserveScroll: true });
+    showAllCardsSent();
     flash('Comments sent to the agent');
   };
 
@@ -694,9 +717,10 @@
     sendEvent({ type: 'approve', doc: doc.path });
     markAllSent();
     renderSubmitButton();
+    showAllCardsSent();
     approved.set(doc.path, doc.mtime);
     renderSidebar();
-    renderDoc(currentId, { preserveScroll: true });
+    renderHeader(doc, currentViewFor(doc.path));
     flash('Approved');
   };
 
