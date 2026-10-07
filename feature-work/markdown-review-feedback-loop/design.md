@@ -13,9 +13,8 @@ problem: ./problem.md
 ## Summary
 
 A new `wait-for-feedback.cjs` script, run by the agent with Bash `run_in_background`, waits until the
-session's `events` file holds a burst of browser feedback that has gone quiet for 2s, atomically
-claims it by renaming the file, prints the claimed events, and exits — which gives the idle agent a
-new turn. The agent re-arms it at the end of every turn unless one is already running. Separately,
+session's `events` file holds unread browser feedback that has gone quiet for 2s, prints the unread
+events, advances a read cursor past them, and exits — which gives the idle agent a new turn. The agent re-arms it at the end of every turn unless one is already running. Separately,
 the server rings the agent's cmux surface when feedback arrives, if it runs under cmux. In the
 viewer, each doc is rendered by file type — markdown via `marked` (with a Source toggle), `.feature`
 via a new line-based Gherkin renderer, anything else as numbered source lines — and the sidebar gets
@@ -31,7 +30,7 @@ browser ──ws──▶ server.cjs ──appendFileSync──▶ state/events
                     └─▶ cmux notify (if in cmux)   │ poll 250ms
                                                    ▼
                agent ◀── exits, stdout = batch ── wait-for-feedback.cjs
-                 │                                 (rename → events.claimed-<ms>)
+                 │                                 (advances state/events.cursor)
                  └── re-arms at end of turn (run_in_background), if none running
 ```
 
@@ -42,31 +41,41 @@ replaced. The watcher removes its pid file on every exit path. So that the agent
 a duplicate (whose immediate exit would itself wake the agent), `--status` runs in the foreground and
 prints `{"watching":true|false}` without waiting; the agent checks it before arming.
 
+**Read cursor.** `events` is append-only and is never moved, truncated or edited by the watcher or
+the agent. `state/events.cursor` holds the byte offset up to which events have been delivered
+(absent = 0). *Unread events* are the complete lines (terminated by `\n`) between the cursor and the
+end of the file; a trailing partial line is left for the next read. If `events` is shorter than the
+cursor (truncated by an agent following the pre-1.7 contract), the cursor resets to 0.
+
 **Wait loop**, polling every 250ms:
 
-1. If `state/events` is non-empty and was last modified ≥ `--quiet-ms` (default 2000) ago → claim
-   (below), print, exit 0.
-2. Else if `state/server-stopped` exists → claim and print any non-empty `events` regardless of the
-   quiet window, then print `{"type":"server-stopped","reason":<reason from server-stopped>}`,
-   exit 3. Claiming first means feedback sent just before a stop is never dropped.
-3. Otherwise keep polling.
+1. If `state/` no longer exists → print `{"type":"server-stopped","reason":"session-removed"}`,
+   exit 3. (`stop-server.sh` deletes `/tmp/md-review-*` session dirs; without this the watcher would
+   poll forever.)
+2. If there are unread events and `events` was last modified ≥ `--quiet-ms` (default 2000) ago →
+   deliver (below), exit 0.
+3. Else if `state/server-stopped` exists → deliver any unread events regardless of the quiet window,
+   then print `{"type":"server-stopped","reason":<reason from server-stopped>}`, exit 3. Delivering
+   first means feedback sent just before a stop is never dropped.
+4. Otherwise keep polling.
 
-**Claim**: `rename(events, events.claimed-<Date.now()>)`; ENOENT means another process got there
-first or the file was never created — keep polling. After a successful rename, wait 200ms (lets an
-append that opened the old inode just before the rename finish), read the claimed file, write it to
-stdout.
+**Deliver**: write the unread lines to stdout, then save the new offset by writing
+`events.cursor.tmp` and renaming it over `events.cursor` (atomic). Printing before saving makes
+delivery at-least-once: if the watcher dies between the two, the next watcher re-delivers that batch
+rather than losing it.
 
-Why rename instead of the current read-then-truncate: `server.cjs` calls
-`fs.appendFileSync(path.join(STATE_DIR, 'events'), …)` per event, which opens the file by path every
-time, so after a rename the next event creates a fresh `events`. Nothing written between "read" and
-"clear" can be lost, and events that arrive mid-turn wait in the new file until the re-armed watcher
-claims them (problem criteria 2–4).
+Why a cursor rather than the current read-then-truncate, or claiming by renaming the file: truncation
+loses anything appended between the read and the truncate; a rename loses an append that opened the
+old file just before the rename but wrote after the claimed copy was read (no settle delay can bound
+a stalled writer). With a cursor nothing is ever moved or cleared, so a late or partial write is
+simply read on the next wake, and events that arrive mid-turn wait past the cursor until the re-armed
+watcher delivers them (problem criteria 2–4).
 
 `--session-dir` is required: the agent always knows its own session dir, and a "newest session"
-default would let one agent claim another agent's events.
+default would let one agent consume another agent's events.
 
 **Timing budget** (problem criterion 2, ≤ 3s after the last event): quiet window 2000ms + poll
-≤ 250ms + settle 200ms = ≤ 2450ms, leaving ~550ms for Claude Code to re-invoke the agent. Raising
+≤ 250ms = ≤ 2250ms, leaving ~750ms for Claude Code to re-invoke the agent. Raising
 `--quiet-ms` above 2000 breaks the criterion.
 
 ### 2. cmux ring — `server.cjs`
@@ -152,12 +161,13 @@ wrapped in try/catch because it can be unavailable, and the default width is use
 - **Exit 3**: act on any events printed before the `server-stopped` line. Then:
   - `reason` is `idle timeout` or `owner process exited` → the review was abandoned; do not restart
     or re-arm. Tell the operator.
-  - `reason` is `signal` → it was stopped deliberately; do not restart.
+  - `reason` is `signal` or `session-removed` → it was stopped deliberately; do not restart.
   - To continue a review later, restart with the same `--project-dir`: this creates a **new**
     `session_dir` (`start-server.sh` makes `<pid>-<epoch>` per start). Re-add docs and arm the
     watcher with the new `session_dir` from the restart output — never the old one.
 - **Exit 4** (`already-watching`): nothing to do; do not re-arm.
-- The "truncate the events file" step is removed; the agent never edits `events`.
+- The "truncate the events file" step is removed; the agent never edits `events` or
+  `events.cursor`. To re-read past feedback, read `events` directly.
 - Locating a comment: `line` when present, else `quote` (grep the source), else `blockIndex`.
 - Note for multi-agent projects: only ever pass your own `session_dir`.
 
@@ -165,10 +175,10 @@ wrapped in try/catch because it can be unavailable, and the default width is use
 
 - `SKILL.md`: review loop (§5), event format (new fields), description (mention `.feature` /
   non-markdown files).
-- `DESIGN.md` (skill): "Feedback events" and "Agent workflow" sections (truncate contract → claim
-  contract), "Out of scope" (syntax highlighting stays out; Gherkin rendering now in).
+- `DESIGN.md` (skill): "Feedback events" and "Agent workflow" sections (truncate contract → read
+  cursor), "Out of scope" (syntax highlighting stays out; Gherkin rendering now in).
 - `server.cjs` comment above the `appendFileSync` in `handleMessage` ("the agent truncates it after
-  reading") → points to the watcher's rename claim.
+  reading") → says `events` is append-only and the watcher tracks a read cursor.
 
 ## Interfaces
 
@@ -176,9 +186,9 @@ wrapped in try/catch because it can be unavailable, and the default width is use
 
 | Exit | stdout | Meaning |
 |------|--------|---------|
-| 0 | claimed events, JSONL | feedback batch |
+| 0 | unread events, JSONL | feedback batch |
 | 0 (`--status`) | `{"watching":true\|false}` | watcher liveness, no waiting |
-| 3 | claimed events (if any), then `{"type":"server-stopped","reason":…}` | session's server stopped |
+| 3 | unread events (if any), then `{"type":"server-stopped","reason":…}` | session's server stopped, or its dir was removed (`reason: "session-removed"`) |
 | 4 | `{"type":"already-watching","pid":N}` | another live watcher owns this session |
 | 1 | — (stderr names the failure and input, e.g. `--session-dir is required`, `not an md-review session: <dir>`) | usage error |
 
@@ -204,10 +214,11 @@ HTTP routes and WebSocket messages: unchanged.
 
 ## Data model
 
-- `state/events` — unclaimed events (JSONL).
-- `state/events.claimed-<epoch-ms>` — one file per claimed batch. Never auto-deleted; they live and
-  die with the session dir (project sessions persist until the operator deletes `.md-review/`;
-  `/tmp` sessions are removed by `stop-server.sh`), so growth is bounded per session.
+- `state/events` — every event of the session, append-only JSONL. Never cleared; it lives and dies
+  with the session dir (project sessions persist until the operator deletes `.md-review/`; `/tmp`
+  sessions are removed by `stop-server.sh`), so growth is bounded per session.
+- `state/events.cursor` — decimal byte offset into `events` up to which events were delivered;
+  absent = 0.
 - `state/watcher.pid` — pid of the live watcher; absent when none.
 - Browser `localStorage['mdreview-sidebar-width']` — integer px.
 - Per-doc view choice — in-memory in the viewer; resets on reload.
@@ -224,8 +235,8 @@ comments; no way to anchor a comment to a line.
 
 ### Complete
 
-The chosen design above: single claiming watcher with quiet-window debounce and server-stopped
-handling; file-type renderers including a small Gherkin renderer; source view with line comments;
+The chosen design above: single watcher with a read cursor, quiet-window debounce and
+server-stopped handling; file-type renderers including a small Gherkin renderer; source view with line comments;
 drag-resize sidebar; optional debounced cmux ring from the server.
 
 ### Optimal
@@ -246,19 +257,19 @@ delivery keep us below Optimal.
 
 ## Risks
 
-- **Rename race** — an append that opened `events` just before the rename lands in the claimed file
-  after the read. Mitigated by the 200ms settle. Tested by simulation: the test opens an fd on
-  `events` (standing in for an in-flight `appendFileSync`), lets the watcher rename it, writes
-  through the held fd within the settle window, and asserts the watcher's stdout includes that
-  write.
+- **Duplicate delivery** — delivery is at-least-once: a watcher killed between printing and saving
+  the cursor re-delivers that batch next time. The agent may see an event twice; it never misses one.
+- **Partial writes** — a line still being written when the watcher reads has no trailing `\n` yet;
+  it stays past the cursor and is delivered on the next wake. Tested by writing a line in two halves
+  around a watcher run.
+- **Throwaway sessions** — feedback sent within the quiet window before `stop-server.sh` deletes a
+  `/tmp` session dir is lost with the dir. Accepted: `/tmp` sessions are throwaway by design.
 - **Agent forgets to re-arm** — the next batch is not acted on until the operator types (today's
   behavior). Mitigated by making status-check-then-arm an explicit end-of-turn step in `SKILL.md`;
   the cmux ring still alerts the operator.
 - **Stale pid file after a hard kill** — handled: a pid file naming a dead process is replaced.
   PID reuse by an unrelated live process would make the watcher wrongly report `already-watching`;
   accepted as unlikely within one review.
-- **Assumption: server reopens `events` by path per append** — true of `appendFileSync(path)`
-  today; a server test pins it (rename `events`, send an event, assert a new `events` file appears).
 - **Assumption: `run_in_background` commands don't expire** — documented as "keeps running across
   turns"; not stated for long durations. Verified with a ≥10-minute run during implementation; if it
   expires, the watcher gets a `--max-wait` and the agent re-arms on timeout.
@@ -276,7 +287,7 @@ delivery keep us below Optimal.
 - Typing prompts into the operator's terminal (cmux doorbell / `cmux send`)
 - Sidebar width syncing across browsers or machines
 - Pushing events via `Monitor` (see Optimal)
-- Automatic cleanup of claimed event files
+- Automatic cleanup of `events` within a session
 
 ## Open questions
 
@@ -293,3 +304,6 @@ delivery keep us below Optimal.
 - 2026-10-07: Plan-reviewer pass — parser file is `gherkin.cjs` (repo root `package.json` is
   `"type": "module"`, so a `.js` file would load as ESM in Node tests); ring body covers bursts
   spanning several docs.
+- 2026-10-07: roborev (job 3848) — replaced the rename claim with an append-only `events` + read
+  cursor (a stalled writer could lose an event after the 200ms settle); delivery is at-least-once;
+  watcher exits 3 `session-removed` when a `/tmp` session dir is deleted. Approved by operator.

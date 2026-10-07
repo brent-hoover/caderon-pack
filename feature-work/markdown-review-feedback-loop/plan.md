@@ -53,7 +53,7 @@ design.md Risks. No notification / killed → do step 3b.
 
 ### 2. Server: pin append-by-path, add debounced cmux ring
 
-**Status:** ☐
+**Status:** ☑ (3c5fbda; 21/21 tests; no ring on the operator's surface from the suite)
 
 **What:** `scripts/server.cjs`, `tests/server.test.cjs`.
 
@@ -77,8 +77,9 @@ design.md Risks. No notification / killed → do step 3b.
   `cmux-notify-failed` line and the event is still in `events`.
 - [ ] Implement in `handleMessage` per design §2 (`execFile`, no shell; `MDREVIEW_CMUX_BIN`).
 
-**Why:** The watcher's no-loss guarantee rests on append-by-path; the ring is independent of the
-watcher and the smallest piece to land first.
+**Why:** The ring is independent of the watcher and the smallest piece to land first. (The
+append-by-path test was written for the earlier rename design; it stays as a harmless regression
+check.)
 
 **Verify:** `node --test tests/` — old and new tests pass; run inside cmux with no ring observed on
 the operator's surface.
@@ -87,7 +88,7 @@ the operator's surface.
 
 **Status:** ☐
 
-**What:** new `scripts/wait-for-feedback.cjs` (purpose: claim a session's pending review events for
+**What:** new `scripts/wait-for-feedback.cjs` (purpose: deliver a session's unread review events to
 the agent once they settle), new `tests/wait-for-feedback.test.cjs`. Tests drive the script as a
 child process against a temp session dir with hand-written `events` / `server-stopped` files; no
 server needed.
@@ -97,21 +98,27 @@ server needed.
 - [ ] Tests (each `Given … when … then …`):
   - [ ] no `--session-dir` → exit 1, stderr names the missing flag
   - [ ] `--session-dir` without `state/` → exit 1, stderr names the dir
-  - [ ] events written, quiet 2s → exit 0, stdout = those events, `events` gone,
-    `events.claimed-*` holds them
+  - [ ] events written, quiet 2s → exit 0, stdout = those events, `events` unchanged,
+    `events.cursor` = its byte length
+  - [ ] second run after more events → stdout = only the new events
+  - [ ] cursor already at end, no new events → still running after 3s (never re-delivers)
+  - [ ] `events` shorter than the cursor (truncated) → cursor resets, all lines delivered
   - [ ] `--quiet-ms 500`, events written → exit 0 between 0.5s and 1.2s after the write
   - [ ] events written every 500ms for 3s → no exit until ≥ 2s after the last; one batch with all
   - [ ] empty / missing `events` → still running after 3s
   - [ ] `server-stopped` with `reason`, pending events inside the quiet window → exit 3, stdout =
     events then `{"type":"server-stopped","reason":…}`
   - [ ] `server-stopped`, no events → exit 3, only the stopped line
+  - [ ] session `state/` dir deleted while waiting → exit 3,
+    `{"type":"server-stopped","reason":"session-removed"}`
   - [ ] live watcher running → second one exits 4 with `already-watching` and the first's pid, and
     `watcher.pid` still names the first watcher
   - [ ] `watcher.pid` naming a dead pid → watcher starts normally and rewrites it
   - [ ] `--status` → `{"watching":true}` / `{"watching":false}` immediately
   - [ ] watcher exits 0, exits 3, or receives SIGTERM → `watcher.pid` removed
-  - [ ] rename race: test holds an fd on `events`, watcher renames, test writes through the fd
-    within 200ms → that write is in stdout
+  - [ ] partial write: first half of a line (no `\n`) plus one complete line → only the complete
+    line delivered, cursor stops before the partial one; after the rest is written, the next run
+    delivers it
 - [ ] Implement per design §1.
 
 **Why:** Fixes problem 1 (feedback not acted on) — the core of the feature.
@@ -256,8 +263,8 @@ start a review of this feature's docs, let the agent arm the watcher, then from 
 **Why:** Problem criteria 2, 3, 4, 7 can only be observed end to end.
 
 **Verify:** (a) agent turn starts ≤ 3s after the click and the pane rings; (b) exactly one agent
-turn with all three; (c) acted on in the next turn, nothing lost (`cat state/events.claimed-*`
-matches what was sent); (d) the agent receives the comment and the stopped reason, and does not
+turn with all three; (c) acted on in the next turn, nothing lost (`state/events` matches what
+was sent and `events.cursor` equals its size); (d) the agent receives the comment and the stopped reason, and does not
 restart. Results recorded in this step.
 
 ## Rollback
@@ -275,3 +282,4 @@ remain readable since all new fields are optional.
   step 1; conditional step 3b; WS sender + env-scrub helpers; timing tolerances; pid-file, SIGTERM
   and `--quiet-ms` tests; step 5 split into 5a–5c; exact sync-script check and codex manifest;
   storage-blocked check method; multi-doc ring body.
+- 2026-10-07: Step 3 tests reworked for the read-cursor design (roborev job 3848).
