@@ -265,10 +265,15 @@ out of scope), `server.cjs` comment in `handleMessage`, version 1.6.0 → 1.7.0 
 
 ### 8. End-to-end in cmux
 
-**Status:** ☐ — first run 2026-10-07 (quiet-window design): (a) Approve → wake ~2s, ring ✅;
-(b) comments < 2s apart grouped ✅; (c) comment while agent mid-turn delivered next batch, nothing
-lost ✅. Found: real comments are 10–30s apart → one wake per comment; saved comments invisible.
-Design revised → steps 9–12, then re-run.
+**Status:** ☑ — re-run 2026-10-07 in cmux on fbddaa4 (per-doc submit), operator driving the cmux
+browser, agent = this session with the watcher armed per SKILL.md:
+(b) 4 comments over ~60s on debit-traceability.feature (3 Gherkin + 1 doc-level), no early wake;
+Submit 19:36:23 → woke ~1s later with all 4 + submit; ring "4 comments on
+debit-traceability.feature". (c) simulated busy agent (watcher stopped): comment + Submit landed
+past the cursor; re-arm delivered it immediately, cursor = file size. (a) Approve 19:39:05 → woke
+same second; ring "1 approval on debit-traceability.feature". (d) unsubmitted comment, then
+`stop-server.sh` → watcher printed the comment then `server-stopped` (`signal`), exit 3.
+First run (quiet-window design) findings drove steps 9–13.
 
 **What:** No code. In a fresh Claude Code session in cmux with the plugin loaded from the worktree:
 start a review of this feature's docs, let the agent arm the watcher, then from the browser:
