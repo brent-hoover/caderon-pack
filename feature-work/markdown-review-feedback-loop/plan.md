@@ -130,7 +130,7 @@ click Approve in a browser, the agent is re-invoked with the event in the output
 
 **Status:** ☐ — only if step 1 shows background commands expire
 
-**What:** `--max-wait <ms>` on the watcher: when it elapses with nothing claimed, print
+**What:** `--max-wait <ms>` on the watcher: when it elapses with nothing delivered, print
 `{"type":"max-wait"}`, remove `watcher.pid`, exit 5. Test in `tests/wait-for-feedback.test.cjs`.
 Step 7's SKILL.md contract then adds "exit 5 → re-arm" and design.md's Interfaces table gains exit 5.
 
