@@ -496,6 +496,48 @@
     toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
   }
 
+  // ===== resizable sidebar =====
+
+  const SIDEBAR_MIN_PX = 180;
+  const SIDEBAR_MAX_VIEWPORT_FRACTION = 0.5;
+  const SIDEBAR_WIDTH_KEY = 'mdreview-sidebar-width';
+
+  function applySidebarWidth(px) {
+    const max = Math.floor(window.innerWidth * SIDEBAR_MAX_VIEWPORT_FRACTION);
+    const width = Math.round(Math.min(Math.max(px, SIDEBAR_MIN_PX), max));
+    document.documentElement.style.setProperty('--sidebar-w', width + 'px');
+    return width;
+  }
+
+  // Storage can be unavailable (blocked site data, some private modes);
+  // the sidebar then just uses the default width.
+  function restoreSidebarWidth() {
+    let saved = null;
+    try { saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)); } catch (e) { return; }
+    if (saved) applySidebarWidth(saved);
+  }
+
+  function saveSidebarWidth(width) {
+    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width)); } catch (e) { /* storage unavailable */ }
+  }
+
+  const handle = $('#sidebar-handle');
+  let draggedWidth = null;
+  handle.addEventListener('pointerdown', (e) => {
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('dragging');
+    draggedWidth = applySidebarWidth(e.clientX);
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (draggedWidth !== null) draggedWidth = applySidebarWidth(e.clientX);
+  });
+  handle.addEventListener('pointerup', () => {
+    handle.classList.remove('dragging');
+    if (draggedWidth !== null) saveSidebarWidth(draggedWidth);
+    draggedWidth = null;
+  });
+  restoreSidebarWidth();
+
   // ===== doc-level controls =====
 
   $('#send-doc-comment').onclick = () => {

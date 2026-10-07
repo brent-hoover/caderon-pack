@@ -231,7 +231,8 @@ name; hovering a sidebar item and the doc header shows the absolute path.
 
 ### 6. Viewer: resizable sidebar
 
-**Status:** ☐
+**Status:** ☑ — Chromium at 1200px: default 260; drag to 420 → 420, to 50 → 180, to 1100 → 600
+(50%); reload keeps 380; with `localStorage` throwing: 260px, 4 docs listed, no page errors.
 
 **What:** `scripts/viewer.html` (grid column var, handle element, styles), `scripts/viewer.js`
 (pointer drag, clamp, `localStorage` with try/catch).
