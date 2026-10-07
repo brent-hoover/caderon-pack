@@ -41,7 +41,8 @@ All paths below are relative to `plugins/core/skills/markdown-review/` unless th
 
 ### 1. Verify `run_in_background` lifetime
 
-**Status:** ☐ (started 2026-10-07, 12-minute sleep running)
+**Status:** ☑ — 12-minute background sleep ran 11:26:33 → 11:38:33 and re-invoked the session
+on exit. No expiry; step 3b skipped.
 
 **What:** No code. A Bash `run_in_background` command sleeps 12 minutes then echoes; record whether
 the session is re-invoked.
@@ -84,7 +85,7 @@ the operator's surface.
 
 ### 3. `wait-for-feedback.cjs`
 
-**Status:** ☐
+**Status:** ☐ (code + tests in 65bba5c, 37/37; manual browser check pending)
 
 **What:** new `scripts/wait-for-feedback.cjs` (purpose: deliver a session's unread review events to
 the agent once they settle), new `tests/wait-for-feedback.test.cjs`. Tests drive the script as a
@@ -126,7 +127,7 @@ click Approve in a browser, the agent is re-invoked with the event in the output
 
 ### 3b. (Conditional on step 1) `--max-wait`
 
-**Status:** ☐ — only if step 1 shows background commands expire
+**Status:** — skipped (step 1: no expiry at 12 min)
 
 **What:** `--max-wait <ms>` on the watcher: when it elapses with nothing delivered, print
 `{"type":"max-wait"}`, remove `watcher.pid`, exit 5. Test in `tests/wait-for-feedback.test.cjs`.

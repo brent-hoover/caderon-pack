@@ -271,8 +271,9 @@ delivery keep us below Optimal.
   PID reuse by an unrelated live process would make the watcher wrongly report `already-watching`;
   accepted as unlikely within one review.
 - **Assumption: `run_in_background` commands don't expire** — documented as "keeps running across
-  turns"; not stated for long durations. Verified with a ≥10-minute run during implementation; if it
-  expires, the watcher gets a `--max-wait` and the agent re-arms on timeout.
+  turns". Verified 2026-10-07: a 12-minute background command completed and re-invoked the session.
+  Longer reviews are untested; if a watcher is ever killed, the agent's SIGTERM-free re-arm rule
+  still applies at the next turn.
 - **Gherkin edge cases** (`Scenario Outline`, `Rule`, `#` inside doc strings, comments between
   scenarios) — covered by `gherkin.cjs` unit tests on fixtures; unknown lines render as `text`.
 - **Trust model** — comment text now starts agent turns without passing through the terminal
