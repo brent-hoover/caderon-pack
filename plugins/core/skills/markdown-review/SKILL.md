@@ -111,7 +111,8 @@ me are a finished batch".
 
 Locate an inline comment by `line` when present (1-based source line; for
 Gherkin, the scenario/block header line), else by grepping `quote` in the
-source, else by `blockIndex` (top-level rendered block for `rendered`, Gherkin
+source — if it appears several times, `occurrence` (0-based) says which one —
+else by `blockIndex` (top-level rendered block for `rendered`, Gherkin
 block for `gherkin`). Events without `view` come from older viewers — treat
 them as `rendered`. Delivery is at-least-once: rarely, an event may be
 delivered twice.
