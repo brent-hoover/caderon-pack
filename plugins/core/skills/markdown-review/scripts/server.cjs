@@ -95,6 +95,9 @@ const SESSION_DIR = process.env.MDREVIEW_DIR || '/tmp/md-review';
 const MANIFEST_FILE = path.join(SESSION_DIR, 'manifest.json');
 const STATE_DIR = path.join(SESSION_DIR, 'state');
 let ownerPid = process.env.MDREVIEW_OWNER_PID ? Number(process.env.MDREVIEW_OWNER_PID) : null;
+// Set when the agent that started the server runs inside cmux; enables the feedback ring.
+const CMUX_SURFACE_ID = process.env.CMUX_SURFACE_ID || null;
+const CMUX_BIN = process.env.MDREVIEW_CMUX_BIN || 'cmux';
 
 const TOKEN_FILE = process.env.MDREVIEW_TOKEN_FILE || null;
 function generateToken() {
@@ -133,11 +136,13 @@ const ASSET_MIME = {
 const viewerHtml = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf-8');
 const viewerJs = fs.readFileSync(path.join(__dirname, 'viewer.js'), 'utf-8');
 const markedJs = fs.readFileSync(path.join(__dirname, 'marked.min.js'), 'utf-8');
+const gherkinJs = fs.readFileSync(path.join(__dirname, 'gherkin.cjs'), 'utf-8');
 
 function viewerPage() {
   // split/join, not replace(): script bodies may contain '$' patterns
   return viewerHtml
     .split('<!-- MARKED_JS -->').join('<script>\n' + markedJs + '\n</script>')
+    .split('<!-- GHERKIN_JS -->').join('<script>\n' + gherkinJs + '\n</script>')
     .split('<!-- VIEWER_JS -->').join('<script>\n' + viewerJs + '\n</script>');
 }
 
@@ -350,6 +355,9 @@ function handleRequest(req, res) {
   } else if (pathname === '/docs') {
     res.writeHead(200, securityHeaders({ 'Content-Type': 'application/json' }));
     res.end(JSON.stringify(docsPayload()));
+  } else if (pathname === '/events') {
+    res.writeHead(200, securityHeaders({ 'Content-Type': 'application/json' }));
+    res.end(JSON.stringify(recordedEvents()));
   } else if (pathname.startsWith('/doc/')) {
     const docPath = docById(pathname.slice(5));
     let body = null;
@@ -443,6 +451,23 @@ function handleUpgrade(req, socket) {
   socket.on('error', () => clients.delete(socket));
 }
 
+const EVENTS_FILE = path.join(STATE_DIR, 'events');
+const RECORDED_EVENT_TYPES = ['comment', 'approve', 'submit'];
+
+// Every review event of this session, for the viewer to rebuild comment cards
+// after a reload. Only complete lines: an append may be in flight.
+function recordedEvents() {
+  let content;
+  try {
+    content = fs.readFileSync(EVENTS_FILE, 'utf-8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    throw e;
+  }
+  const completeLines = content.slice(0, content.lastIndexOf('\n') + 1).split('\n').filter(Boolean);
+  return completeLines.map(line => JSON.parse(line));
+}
+
 function handleMessage(text) {
   let event;
   try {
@@ -453,11 +478,51 @@ function handleMessage(text) {
   }
   touchActivity();
   console.log(JSON.stringify({ source: 'user-event', ...event }));
-  // Persist review events. Unlike the fork, the events file is NEVER cleared
-  // by the server — the agent truncates it after reading.
-  if (event && (event.type === 'comment' || event.type === 'approve')) {
-    fs.appendFileSync(path.join(STATE_DIR, 'events'), JSON.stringify(event) + '\n');
+  // Persist review events. Unlike the fork, the events file is append-only:
+  // nothing clears it; wait-for-feedback.cjs tracks a read cursor into it.
+  if (event && RECORDED_EVENT_TYPES.includes(event.type)) {
+    fs.appendFileSync(EVENTS_FILE, JSON.stringify(event) + '\n');
+    if (CMUX_SURFACE_ID) tallyForCmuxRing(event);
   }
+}
+
+// ========== cmux ring ==========
+
+// Comments are tallied silently per doc; a submit or approve on a doc — the
+// same events that wake the agent — rings once with that doc's tally.
+const pendingCommentsByDoc = new Map(); // doc path -> comment count
+
+function tallyForCmuxRing(event) {
+  if (event.type === 'comment') {
+    pendingCommentsByDoc.set(event.doc, (pendingCommentsByDoc.get(event.doc) || 0) + 1);
+    return;
+  }
+  const comments = pendingCommentsByDoc.get(event.doc) || 0;
+  pendingCommentsByDoc.delete(event.doc);
+  ringCmuxSurface({
+    comments: comments,
+    approvals: event.type === 'approve' ? 1 : 0,
+    docs: [path.basename(String(event.doc))]
+  });
+}
+
+function ringCmuxSurface(tally) {
+  const body = describeTally(tally);
+  // execFile, not exec: the body carries doc names sent by the browser.
+  // --desktop false: pane ring + sidebar badge without a macOS banner.
+  const args = ['notify', '--surface', CMUX_SURFACE_ID, '--title', 'Review feedback',
+    '--body', body, '--desktop', 'false'];
+  require('child_process').execFile(CMUX_BIN, args, (err) => {
+    if (err) console.log(JSON.stringify({ type: 'cmux-notify-failed', bin: CMUX_BIN, error: err.message }));
+  });
+}
+
+function describeTally(tally) {
+  const parts = [];
+  if (tally.comments > 0) parts.push(tally.comments + (tally.comments === 1 ? ' comment' : ' comments'));
+  if (tally.approvals > 0) parts.push(tally.approvals + (tally.approvals === 1 ? ' approval' : ' approvals'));
+  if (parts.length === 0) return 'Feedback submitted';
+  return parts.join(', ') + ' on ' + tally.docs.join(', ');
 }
 
 function broadcast(msg) {

@@ -1,6 +1,6 @@
 {
   "name": "core",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Brent's always-on skills: code explanation, conventional commits, codebase visualization, code quality, git, git worktrees, Vue/TypeScript, user stories, BDD specs, SQLite/Drizzle, Agent Teams orchestration, browser-based markdown review, a cross-session agent message bus, and session retrospectives",
   "author": {
     "name": "Brent Hoover",

@@ -30,6 +30,23 @@ function waitForStart(p) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// Running the suite inside cmux must never ring the operator's real surface,
+// so CMUX_SURFACE_ID is dropped unless a test passes it explicitly.
+function spawnServer(dir, token, extraEnv = {}) {
+  const env = { ...process.env, MDREVIEW_DIR: dir, MDREVIEW_TOKEN: token, MDREVIEW_LIFECYCLE_CHECK_MS: '600000' };
+  delete env.CMUX_SURFACE_ID;
+  return spawn('node', [path.join(SCRIPTS, 'server.cjs')], { env: { ...env, ...extraEnv } });
+}
+
+function sendReviewEvent(port, token, event) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket('ws://127.0.0.1:' + port + '/?key=' + token);
+    ws.onopen = () => { ws.send(JSON.stringify(event)); ws.close(); };
+    ws.onclose = () => resolve();
+    ws.onerror = (e) => reject(new Error('websocket error sending ' + event.type + ': ' + e.message));
+  });
+}
+
 before(async () => {
   sessionDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-test-'));
   docsDir = path.join(sessionDir, 'docs');
@@ -42,9 +59,7 @@ before(async () => {
   stateDir = path.join(sessionDir, 'state');
   fs.writeFileSync(manifestFile, JSON.stringify([path.join(docsDir, 'plan.md')]));
 
-  proc = spawn('node', [path.join(SCRIPTS, 'server.cjs')], {
-    env: { ...process.env, MDREVIEW_DIR: sessionDir, MDREVIEW_TOKEN: TOKEN, MDREVIEW_LIFECYCLE_CHECK_MS: '600000' }
-  });
+  proc = spawnServer(sessionDir, TOKEN);
   const info = await waitForStart(proc);
   base = 'http://127.0.0.1:' + info.port;
   cookie = 'mdreview-key-' + info.port + '=' + TOKEN;
@@ -73,6 +88,8 @@ test('serves viewer with inlined marked and viewer scripts', async () => {
   assert.match(body, /id="doclist"/);
   assert.doesNotMatch(body, /<!-- MARKED_JS -->/);
   assert.doesNotMatch(body, /<!-- VIEWER_JS -->/);
+  assert.doesNotMatch(body, /<!-- GHERKIN_JS -->/);
+  assert.match(body, /function parseGherkinBlocks/);
   assert.match(body, /marked/);
   assert.match(body, /refreshDocs/);
 });
@@ -139,9 +156,7 @@ test('resolveAsset unit: accepts inside, rejects outside and bad ext', () => {
 test('SIGTERM runs the shutdown handler: writes server-stopped, removes server-info', async () => {
   const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-test2-'));
   const stateDir2 = path.join(dir2, 'state');
-  const proc2 = spawn('node', [path.join(SCRIPTS, 'server.cjs')], {
-    env: { ...process.env, MDREVIEW_DIR: dir2, MDREVIEW_TOKEN: 'b'.repeat(64), MDREVIEW_LIFECYCLE_CHECK_MS: '600000' }
-  });
+  const proc2 = spawnServer(dir2, 'b'.repeat(64));
   await waitForStart(proc2);
 
   const exited = new Promise((resolve, reject) => {
@@ -176,4 +191,105 @@ test('WS upgrade without a key/cookie is rejected before the 101 response', asyn
   await closed;
   const data = Buffer.concat(chunks).toString();
   assert.ok(!data.startsWith('HTTP/1.1 101'));
+});
+
+test('Given no key, when GET /events, then it is rejected', async () => {
+  assert.strictEqual((await fetch(base + '/events')).status, 403);
+});
+
+test('Given no events yet, when GET /events, then it returns an empty list', async () => {
+  assert.deepStrictEqual(await (await get('/events')).json(), []);
+});
+
+test('Given events were sent, when GET /events, then it returns them parsed and skips a partial line', async () => {
+  const port = Number(base.split(':').pop());
+  await sendReviewEvent(port, TOKEN, { type: 'comment', doc: '/x/plan.md', scope: 'doc', comment: 'first' });
+  await sendReviewEvent(port, TOKEN, { type: 'submit' });
+  await sleep(300);
+  fs.appendFileSync(path.join(stateDir, 'events'), '{"type":"comm');
+  const events = await (await get('/events')).json();
+  assert.deepStrictEqual(events.map(e => e.type), ['comment', 'submit']);
+  assert.strictEqual(events[0].comment, 'first');
+});
+
+const RING_WAIT_MS = 1000;
+const NO_RING_WAIT_MS = 3000;
+
+function startRingServer(extraEnv) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-ring-'));
+  const callsFile = path.join(dir, 'cmux-calls');
+  const stub = path.join(dir, 'cmux-stub.sh');
+  const exitCode = extraEnv.STUB_EXIT || '0';
+  fs.writeFileSync(stub, '#!/bin/sh\nprintf "%s\\n" "$*" >> "' + callsFile + '"\nexit ' + exitCode + '\n', { mode: 0o755 });
+  const token = 'c'.repeat(64);
+  const p = spawnServer(dir, token, { MDREVIEW_CMUX_BIN: stub, ...extraEnv });
+  let stdout = '';
+  p.stdout.on('data', (d) => { stdout += d.toString(); });
+  return { p, token, callsFile, stateDir: path.join(dir, 'state'), stdout: () => stdout };
+}
+
+function readCalls(callsFile) {
+  return fs.existsSync(callsFile) ? fs.readFileSync(callsFile, 'utf-8').trim().split('\n').filter(Boolean) : [];
+}
+
+async function waitForCall(callsFile, sinceMs) {
+  while (readCalls(callsFile).length === 0 && Date.now() - sinceMs < RING_WAIT_MS) await sleep(25);
+  return readCalls(callsFile);
+}
+
+test('Given comments on two docs, when one doc is submitted, then its ring counts only that doc', async () => {
+  const ring = startRingServer({ CMUX_SURFACE_ID: 'test-surface' });
+  try {
+    const info = await waitForStart(ring.p);
+    const send = (e) => sendReviewEvent(info.port, ring.token, e);
+    await send({ type: 'comment', doc: '/d/a.md', blockIndex: 1, quote: 'q', comment: 'one' });
+    await send({ type: 'comment', doc: '/d/b.md', scope: 'doc', comment: 'two' });
+    await send({ type: 'comment', doc: '/d/a.md', blockIndex: 2, quote: 'q', comment: 'three' });
+    await sleep(2500);
+    assert.deepStrictEqual(readCalls(ring.callsFile), [], 'rang before submit');
+    const submittedAt = Date.now();
+    await send({ type: 'submit', doc: '/d/a.md' });
+    assert.deepStrictEqual(await waitForCall(ring.callsFile, submittedAt), [
+      'notify --surface test-surface --title Review feedback --body 2 comments on a.md --desktop false'
+    ]);
+    await send({ type: 'submit', doc: '/d/b.md' });
+    await sleep(500);
+    assert.strictEqual(readCalls(ring.callsFile)[1],
+      'notify --surface test-surface --title Review feedback --body 1 comment on b.md --desktop false');
+  } finally { ring.p.kill(); }
+});
+
+test('Given cmux, when a doc is approved, then one ring names the approval', async () => {
+  const ring = startRingServer({ CMUX_SURFACE_ID: 'test-surface' });
+  try {
+    const info = await waitForStart(ring.p);
+    const approvedAt = Date.now();
+    await sendReviewEvent(info.port, ring.token, { type: 'approve', doc: '/d/b.md' });
+    assert.deepStrictEqual(await waitForCall(ring.callsFile, approvedAt), [
+      'notify --surface test-surface --title Review feedback --body 1 approval on b.md --desktop false'
+    ]);
+  } finally { ring.p.kill(); }
+});
+
+test('Given no CMUX_SURFACE_ID, when comments are submitted, then cmux is never called', async () => {
+  const ring = startRingServer({});
+  try {
+    const info = await waitForStart(ring.p);
+    await sendReviewEvent(info.port, ring.token, { type: 'comment', doc: '/d/a.md', scope: 'doc', comment: 'x' });
+    await sendReviewEvent(info.port, ring.token, { type: 'submit', doc: '/d/a.md' });
+    await sleep(NO_RING_WAIT_MS);
+    assert.deepStrictEqual(readCalls(ring.callsFile), []);
+  } finally { ring.p.kill(); }
+});
+
+test('Given the cmux call fails, when comments are submitted, then the failure is logged and events kept', async () => {
+  const ring = startRingServer({ CMUX_SURFACE_ID: 'test-surface', STUB_EXIT: '1' });
+  try {
+    const info = await waitForStart(ring.p);
+    await sendReviewEvent(info.port, ring.token, { type: 'comment', doc: '/d/a.md', scope: 'doc', comment: 'kept' });
+    await sendReviewEvent(info.port, ring.token, { type: 'submit', doc: '/d/a.md' });
+    await sleep(RING_WAIT_MS);
+    assert.match(ring.stdout(), /"type":"cmux-notify-failed"/);
+    assert.match(fs.readFileSync(path.join(ring.stateDir, 'events'), 'utf-8'), /kept/);
+  } finally { ring.p.kill(); }
 });
