@@ -284,7 +284,7 @@ restart. Results recorded in this step.
 
 ### 9. Watcher: wake on submit/approve only
 
-**Status:** ☐
+**Status:** ☑ — 21/21 watcher tests (old implementation failed the new ones); full suite green.
 
 **What:** `scripts/wait-for-feedback.cjs`, `tests/wait-for-feedback.test.cjs` (design §1, revised).
 Remove the quiet window and `--quiet-ms`.

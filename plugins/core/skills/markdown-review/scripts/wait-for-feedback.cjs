@@ -1,10 +1,14 @@
 #!/usr/bin/env node
-// Deliver a session's unread review events to the agent once they settle.
+// Deliver a session's unread review events to the agent once the operator
+// submits them.
 //
-// Run by the agent with Bash run_in_background: the script exits when there is
-// feedback to act on, and that exit gives the idle agent a new turn.
+// Run by the agent with Bash run_in_background: the script exits when the
+// operator clicks Submit comments or Approve in the browser, and that exit
+// gives the idle agent a new turn. Comments alone never wake the agent —
+// a review produces one every 10-30s, and the operator decides when a batch
+// is finished.
 //
-// Usage: wait-for-feedback.cjs --session-dir <dir> [--quiet-ms <n>] [--status]
+// Usage: wait-for-feedback.cjs --session-dir <dir> [--status]
 //
 // Exit codes:
 //   0  unread events printed as JSONL (or, with --status, {"watching":bool})
@@ -18,11 +22,8 @@
 const fs = require('fs');
 const path = require('path');
 
-// A review burst (several comments, then approve) lands within a couple of
-// seconds; 2s of quiet groups it into one agent turn. Raising it past 2000ms
-// breaks the "agent acts within 3s" budget (design.md, timing budget).
-const DEFAULT_QUIET_MS = 2000;
 const POLL_INTERVAL_MS = 250;
+const TRIGGER_EVENT_TYPES = ['submit', 'approve'];
 
 const EXIT_DELIVERED = 0;
 const EXIT_USAGE = 1;
@@ -46,21 +47,17 @@ function main() {
   }
   process.on('SIGTERM', () => { releaseWatcherLock(session); process.exit(143); });
   process.on('SIGINT', () => { releaseWatcherLock(session); process.exit(130); });
-  watch(session, options.quietMs);
+  watch(session);
 }
 
 function parseArgs(args) {
-  const options = { sessionDir: null, quietMs: DEFAULT_QUIET_MS, isStatusQuery: false };
+  const options = { sessionDir: null, isStatusQuery: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--session-dir') options.sessionDir = args[++i];
-    else if (args[i] === '--quiet-ms') options.quietMs = Number(args[++i]);
     else if (args[i] === '--status') options.isStatusQuery = true;
     else failUsage('unknown argument: ' + args[i]);
   }
   if (!options.sessionDir) failUsage('--session-dir is required (the session_dir printed by start-server.sh)');
-  if (!Number.isInteger(options.quietMs) || options.quietMs < 0) {
-    failUsage('--quiet-ms must be a non-negative integer, got: ' + options.quietMs);
-  }
   if (!fs.existsSync(path.join(options.sessionDir, 'state'))) {
     failUsage('not an md-review session: ' + options.sessionDir + ' (no state/ directory)');
   }
@@ -83,9 +80,9 @@ function sessionPaths(sessionDir) {
   };
 }
 
-function watch(session, quietMs) {
+function watch(session) {
   const timer = setInterval(() => {
-    const outcome = pollOnce(session, quietMs);
+    const outcome = pollOnce(session);
     if (outcome === null) return;
     clearInterval(timer);
     deliver(session, outcome);
@@ -93,7 +90,7 @@ function watch(session, quietMs) {
 }
 
 // Returns what to deliver and how to exit, or null to keep waiting.
-function pollOnce(session, quietMs) {
+function pollOnce(session) {
   try {
     if (!fs.existsSync(session.stateDir)) return sessionRemovedOutcome();
     // Check for a stop before reading events: the server appends its last
@@ -101,9 +98,7 @@ function pollOnce(session, quietMs) {
     const stopReason = readStopReason(session);
     const unread = readUnreadEvents(session);
     if (stopReason !== null) return { unread, trailer: stoppedLine(stopReason), exitCode: EXIT_SERVER_STOPPED };
-    if (unread.text && msSinceEventsModified(session) >= quietMs) {
-      return { unread, trailer: '', exitCode: EXIT_DELIVERED };
-    }
+    if (containsTrigger(unread.text)) return { unread, trailer: '', exitCode: EXIT_DELIVERED };
     return null;
   } catch (e) {
     // stop-server.sh deletes /tmp sessions; that can land between any two
@@ -162,8 +157,11 @@ function saveCursor(session, offset) {
   fs.renameSync(tmpFile, session.cursorFile);
 }
 
-function msSinceEventsModified(session) {
-  return Date.now() - fs.statSync(session.eventsFile).mtimeMs;
+function containsTrigger(unreadText) {
+  return unreadText.split('\n').some(line => {
+    if (!line) return false;
+    return TRIGGER_EVENT_TYPES.includes(JSON.parse(line).type);
+  });
 }
 
 // Returns null while the server is running. The server writes server-stopped

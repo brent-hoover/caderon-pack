@@ -19,6 +19,9 @@ function eventLine(comment) {
   return JSON.stringify({ type: 'comment', doc: '/d/a.md', scope: 'doc', comment }) + '\n';
 }
 
+const SUBMIT = JSON.stringify({ type: 'submit', timestamp: 1 }) + '\n';
+const APPROVE = JSON.stringify({ type: 'approve', doc: '/d/a.md', timestamp: 1 }) + '\n';
+
 function startWatcher(args) {
   const startedAt = Date.now();
   const child = spawn('node', [WATCHER, ...args]);
@@ -51,31 +54,31 @@ test('Given a dir without state/, when run, then it exits 1 naming the dir', asy
   assert.ok(run.stderr.includes('not an md-review session: ' + dir));
 });
 
-test('Given events that went quiet, when the watcher runs, then it delivers them and advances the cursor', async () => {
+test('Given comments then a submit, when the watcher runs, then it delivers all and advances the cursor', async () => {
   const s = makeSession();
-  fs.writeFileSync(s.eventsFile, eventLine('one') + eventLine('two'));
-  const run = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '300']).exited;
+  fs.writeFileSync(s.eventsFile, eventLine('one') + eventLine('two') + SUBMIT);
+  const run = await startWatcher(['--session-dir', s.sessionDir]).exited;
   assert.strictEqual(run.code, 0);
-  assert.strictEqual(run.stdout, eventLine('one') + eventLine('two'));
-  assert.strictEqual(fs.readFileSync(s.eventsFile, 'utf-8'), eventLine('one') + eventLine('two'));
+  assert.strictEqual(run.stdout, eventLine('one') + eventLine('two') + SUBMIT);
+  assert.strictEqual(fs.readFileSync(s.eventsFile, 'utf-8'), eventLine('one') + eventLine('two') + SUBMIT);
   assert.strictEqual(fs.readFileSync(path.join(s.stateDir, 'events.cursor'), 'utf-8').trim(),
     String(fs.statSync(s.eventsFile).size));
 });
 
 test('Given a delivered batch, when more events arrive, then the next run delivers only the new ones', async () => {
   const s = makeSession();
-  fs.writeFileSync(s.eventsFile, eventLine('old'));
-  await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
-  fs.appendFileSync(s.eventsFile, eventLine('new'));
-  const run = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
-  assert.strictEqual(run.stdout, eventLine('new'));
+  fs.writeFileSync(s.eventsFile, eventLine('old') + SUBMIT);
+  await startWatcher(['--session-dir', s.sessionDir]).exited;
+  fs.appendFileSync(s.eventsFile, eventLine('new') + APPROVE);
+  const run = await startWatcher(['--session-dir', s.sessionDir]).exited;
+  assert.strictEqual(run.stdout, eventLine('new') + APPROVE);
 });
 
 test('Given the cursor is at the end, when nothing new arrives, then the watcher keeps waiting', async () => {
   const s = makeSession();
-  fs.writeFileSync(s.eventsFile, eventLine('old'));
-  await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
-  const w = startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']);
+  fs.writeFileSync(s.eventsFile, eventLine('old') + SUBMIT);
+  await startWatcher(['--session-dir', s.sessionDir]).exited;
+  const w = startWatcher(['--session-dir', s.sessionDir]);
   await sleep(1500);
   assert.ok(w.isRunning(), 'watcher re-delivered already-read events');
   w.child.kill('SIGTERM');
@@ -84,37 +87,49 @@ test('Given the cursor is at the end, when nothing new arrives, then the watcher
 
 test('Given events shorter than the cursor, when the watcher runs, then it resets and delivers all lines', async () => {
   const s = makeSession();
-  fs.writeFileSync(s.eventsFile, eventLine('after-truncate'));
+  fs.writeFileSync(s.eventsFile, eventLine('after-truncate') + SUBMIT);
   fs.writeFileSync(path.join(s.stateDir, 'events.cursor'), '999999\n');
-  const run = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
-  assert.strictEqual(run.stdout, eventLine('after-truncate'));
+  const run = await startWatcher(['--session-dir', s.sessionDir]).exited;
+  assert.strictEqual(run.stdout, eventLine('after-truncate') + SUBMIT);
 });
 
-test('Given --quiet-ms 500, when an event is written, then it is delivered 0.5s–1.2s later', async () => {
+test('Given only comments, when watching, then the watcher keeps waiting', async () => {
   const s = makeSession();
-  const w = startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '500']);
-  await waitForPidFile(s.stateDir);
-  const writtenAt = Date.now();
-  fs.writeFileSync(s.eventsFile, eventLine('timed'));
+  fs.writeFileSync(s.eventsFile, eventLine('one') + eventLine('two'));
+  const w = startWatcher(['--session-dir', s.sessionDir]);
+  await sleep(2500); // past the old 2s quiet window, so a regression to it fails here
+  assert.ok(w.isRunning(), 'comments alone woke the agent');
+  w.child.kill('SIGTERM');
   await w.exited;
-  const delayMs = Date.now() - writtenAt;
-  assert.ok(delayMs >= 500 && delayMs <= 1200, 'delivered after ' + delayMs + 'ms');
 });
 
-test('Given events every 500ms for 3s, when watching, then one batch arrives ≥2s after the last', async () => {
+test('Given a watcher waiting on comments, when a submit arrives, then all are delivered within 1s', async () => {
   const s = makeSession();
+  fs.writeFileSync(s.eventsFile, eventLine('one'));
   const w = startWatcher(['--session-dir', s.sessionDir]);
   await waitForPidFile(s.stateDir);
-  let lastWriteAt = 0;
-  for (let i = 0; i < 6; i++) {
-    fs.appendFileSync(s.eventsFile, eventLine('burst-' + i));
-    lastWriteAt = Date.now();
-    await sleep(500);
-    assert.ok(w.isRunning(), 'delivered mid-burst after write ' + i);
-  }
+  await sleep(300);
+  const submittedAt = Date.now();
+  fs.appendFileSync(s.eventsFile, eventLine('two') + SUBMIT);
   const run = await w.exited;
-  assert.ok(Date.now() - lastWriteAt >= 2000);
-  assert.strictEqual(run.stdout.trim().split('\n').length, 6);
+  assert.ok(Date.now() - submittedAt <= 1000, 'delivered ' + (Date.now() - submittedAt) + 'ms after submit');
+  assert.strictEqual(run.code, 0);
+  assert.strictEqual(run.stdout, eventLine('one') + eventLine('two') + SUBMIT);
+});
+
+test('Given an approve alone, when the watcher runs, then it is delivered', async () => {
+  const s = makeSession();
+  fs.writeFileSync(s.eventsFile, APPROVE);
+  const run = await startWatcher(['--session-dir', s.sessionDir]).exited;
+  assert.strictEqual(run.code, 0);
+  assert.strictEqual(run.stdout, APPROVE);
+});
+
+test('Given --quiet-ms (removed), when run, then it exits 1 as an unknown argument', async () => {
+  const s = makeSession();
+  const run = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '500']).exited;
+  assert.strictEqual(run.code, 1);
+  assert.match(run.stderr, /unknown argument: --quiet-ms/);
 });
 
 test('Given no events, when watching for 3s, then it is still waiting', async () => {
@@ -126,11 +141,11 @@ test('Given no events, when watching for 3s, then it is still waiting', async ()
   await w.exited;
 });
 
-test('Given the server stopped with events inside the quiet window, then they are delivered before exit 3', async () => {
+test('Given the server stopped with unsubmitted comments, then they are delivered before exit 3', async () => {
   const s = makeSession();
   fs.writeFileSync(s.eventsFile, eventLine('last-words'));
   fs.writeFileSync(path.join(s.stateDir, 'server-stopped'), JSON.stringify({ reason: 'signal', timestamp: 1 }) + '\n');
-  const run = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '60000']).exited;
+  const run = await startWatcher(['--session-dir', s.sessionDir]).exited;
   assert.strictEqual(run.code, 3);
   assert.strictEqual(run.stdout, eventLine('last-words') + '{"type":"server-stopped","reason":"signal"}\n');
 });
@@ -195,8 +210,8 @@ test('Given a watcher, when it exits 0, exits 3 or gets SIGTERM, then its pid fi
   const pidFileGone = (s) => !fs.existsSync(path.join(s.stateDir, 'watcher.pid'));
 
   const delivered = makeSession();
-  fs.writeFileSync(delivered.eventsFile, eventLine('x'));
-  assert.strictEqual((await startWatcher(['--session-dir', delivered.sessionDir, '--quiet-ms', '200']).exited).code, 0);
+  fs.writeFileSync(delivered.eventsFile, eventLine('x') + SUBMIT);
+  assert.strictEqual((await startWatcher(['--session-dir', delivered.sessionDir]).exited).code, 0);
   assert.ok(pidFileGone(delivered), 'pid file left after exit 0');
 
   const stopped = makeSession();
@@ -216,13 +231,13 @@ test('Given a half-written line, when the watcher runs, then it delivers only co
   const s = makeSession();
   const partial = eventLine('partial');
   const half = Math.floor(partial.length / 2);
-  fs.writeFileSync(s.eventsFile, eventLine('complete') + partial.slice(0, half));
-  const first = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
-  assert.strictEqual(first.stdout, eventLine('complete'));
+  fs.writeFileSync(s.eventsFile, eventLine('complete') + SUBMIT + partial.slice(0, half));
+  const first = await startWatcher(['--session-dir', s.sessionDir]).exited;
+  assert.strictEqual(first.stdout, eventLine('complete') + SUBMIT);
 
-  fs.appendFileSync(s.eventsFile, partial.slice(half));
-  const second = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
-  assert.strictEqual(second.stdout, partial);
+  fs.appendFileSync(s.eventsFile, partial.slice(half) + SUBMIT);
+  const second = await startWatcher(['--session-dir', s.sessionDir]).exited;
+  assert.strictEqual(second.stdout, partial + SUBMIT);
 });
 
 test('Given an empty pid file left by a killed watcher, when a watcher starts, then it takes over the lock', async () => {
