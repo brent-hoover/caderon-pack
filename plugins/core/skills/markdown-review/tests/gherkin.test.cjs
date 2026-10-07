@@ -79,3 +79,8 @@ test('Given a table row with escaped pipes, when split, then escaped pipes stay 
   assert.deepStrictEqual(splitTableRow('  | a\\|b | expected |'), ['a|b', 'expected']);
   assert.deepStrictEqual(splitTableRow('| x | y |'), ['x', 'y']);
 });
+
+test('Given escaped backslashes before a pipe, when split, then the pipe is still a separator', () => {
+  assert.deepStrictEqual(splitTableRow('| a\\\\ | b |'), ['a\\', 'b']);
+  assert.deepStrictEqual(splitTableRow('| a\\\\\\|b | c |'), ['a\\|b', 'c']);
+});

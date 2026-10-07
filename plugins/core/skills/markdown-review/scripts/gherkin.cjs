@@ -80,10 +80,24 @@ function findBlockStarts(lines) {
   return starts;
 }
 
-// Cells of one '| a | b |' table line; '\\|' is a literal pipe inside a cell.
+// Cells of one '| a | b |' table line. Escapes are read left to right, as
+// Gherkin does: '\\|' is a literal pipe and '\\\\' a literal backslash, so
+// in '\\\\|' the pipe is still a separator.
 function splitTableRow(text) {
-  const cells = text.trim().split(/(?<!\\)\|/).slice(1, -1);
-  return cells.map(cell => cell.trim().replace(/\\\|/g, '|'));
+  const pieces = [''];
+  const row = text.trim();
+  for (let i = 0; i < row.length; i++) {
+    const next = row[i + 1];
+    if (row[i] === '\\' && (next === '|' || next === '\\')) {
+      pieces[pieces.length - 1] += next;
+      i++;
+    } else if (row[i] === '|') {
+      pieces.push('');
+    } else {
+      pieces[pieces.length - 1] += row[i];
+    }
+  }
+  return pieces.slice(1, -1).map(cell => cell.trim());
 }
 
 if (typeof module !== 'undefined') module.exports = { parseGherkinBlocks, splitTableRow };

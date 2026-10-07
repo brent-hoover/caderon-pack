@@ -263,3 +263,17 @@ test('Given a half-written server-stopped marker, when watching, then it waits f
   assert.strictEqual(run.code, 3);
   assert.strictEqual(run.stdout, '{"type":"server-stopped","reason":"signal"}\n');
 });
+
+test('Given comment A, approve, comment B, when delivered, then B waits for the next trigger', async () => {
+  const s = makeSession();
+  fs.writeFileSync(s.eventsFile, eventLine('A') + APPROVE + eventLine('B'));
+  const first = await startWatcher(['--session-dir', s.sessionDir]).exited;
+  assert.strictEqual(first.stdout, eventLine('A') + APPROVE);
+
+  const second = startWatcher(['--session-dir', s.sessionDir]);
+  await sleep(1000);
+  assert.ok(second.isRunning(), 'unsubmitted comment B was delivered');
+  fs.appendFileSync(s.eventsFile, SUBMIT);
+  const run = await second.exited;
+  assert.strictEqual(run.stdout, eventLine('B') + SUBMIT);
+});

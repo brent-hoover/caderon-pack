@@ -57,8 +57,9 @@ cursor (truncated by an agent following the pre-1.7 contract), the cursor resets
    → print `{"type":"server-stopped","reason":"session-removed"}`,
    exit 3. (`stop-server.sh` deletes `/tmp/md-review-*` session dirs; without this the watcher would
    poll forever.)
-2. If the unread events include a `submit` or `approve` event → deliver all unread events (the
-   comments and the trigger), exit 0. Unread comments with no trigger after them keep waiting.
+2. If the unread events include a `submit` or `approve` event → deliver the unread events up to and
+   including the **last** trigger, exit 0. Comments saved after it belong to the next batch and keep
+   waiting (roborev jobs 3866, 3867).
 3. Else if `state/server-stopped` holds a complete JSON marker → deliver any unread events
    (even with no trigger among them), then print
    `{"type":"server-stopped","reason":<reason from server-stopped>}`, exit 3. The marker is checked
@@ -163,8 +164,10 @@ Approve also marks pending comments as sent (the watcher delivers them with the 
 comments on (block, source line, or Gherkin block; several cards stack), doc-level comments in a list
 above the footer box. Each card shows the comment text, the selection if any, and a *pending* /
 *sent* badge. A comment is *sent* iff a `submit` or `approve` event comes after it in `events`.
-Cards render only in the view the comment was made in, matched by `blockIndex` (rendered/gherkin) or
-`line` (source).
+Cards render only in the view the comment was made in. A card attaches to the element whose text
+still matches the comment's `quote` (preferring its original `blockIndex`/`line`), so cards follow
+their text when the agent edits the doc; if no element matches any more, the card moves to the
+doc-level list marked "Commented text has changed" (roborev job 3866).
 
 On load the viewer fetches `GET /events` and rebuilds the cards and the pending count from it, so
 they survive reloads and server restarts within a session. After that it updates them locally as
@@ -363,3 +366,6 @@ delivery keep us below Optimal.
 - 2026-10-07: End-to-end findings (operator decision) — wake on `submit`/`approve` only (quiet
   window and `--quiet-ms` removed; ring on submit/approve, no debounce); Submit comments button;
   comment cards with pending/sent, rebuilt from new `GET /events`.
+- 2026-10-07: roborev (3863, 3865–3867) — deliver only through the last trigger; cards anchored by
+  quote with an orphan fallback; Gherkin escapes parsed sequentially; sidebar re-clamped on resize
+  and on cancelled drags.

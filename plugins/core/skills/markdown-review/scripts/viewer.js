@@ -278,13 +278,30 @@
     return event.view || 'rendered';
   }
 
-  function commentsAt(docPath, view, index) {
-    return savedComments.filter(saved => {
-      const event = saved.event;
-      if (event.doc !== docPath || commentView(event) !== view) return false;
-      if (view === 'doc') return true;
-      return (view === 'source' ? event.line : event.blockIndex) === index;
+  function commentsIn(docPath, view) {
+    return savedComments.filter(saved => saved.event.doc === docPath && commentView(saved.event) === view);
+  }
+
+  function anchorIndexOf(event) {
+    return commentView(event) === 'source' ? event.line : event.blockIndex;
+  }
+
+  // anchors: [{el, index, quote}] for the elements just rendered. A comment
+  // attaches to the element whose text still matches its quote (preferring its
+  // original position), so cards follow their text when the agent edits the
+  // doc. Comments whose text is gone are returned as orphans.
+  function attachCommentCards(docPath, view, anchors) {
+    const cardsByAnchor = new Map();
+    const orphans = [];
+    commentsIn(docPath, view).forEach(saved => {
+      const matches = anchors.filter(a => a.quote === saved.event.quote);
+      const anchor = matches.find(a => a.index === anchorIndexOf(saved.event)) || matches[0];
+      if (!anchor) { orphans.push(saved); return; }
+      if (!cardsByAnchor.has(anchor)) cardsByAnchor.set(anchor, []);
+      cardsByAnchor.get(anchor).push(saved);
     });
+    cardsByAnchor.forEach((comments, anchor) => attachComments(anchor.el, comments));
+    return orphans;
   }
 
   function renderSubmitButton() {
@@ -315,9 +332,7 @@
   }
 
   // Marks el as commented and shows its comments right after it.
-  function attachComments(el, docPath, view, index) {
-    const comments = commentsAt(docPath, view, index);
-    if (comments.length === 0) return;
+  function attachComments(el, comments) {
     el.classList.add('commented');
     const cards = document.createElement('div');
     cards.className = 'comment-cards';
@@ -325,10 +340,18 @@
     insertAfter(el, cards);
   }
 
-  function renderDocComments(doc) {
+  function renderDocComments(doc, orphans) {
     const list = $('#doc-comments');
     list.innerHTML = '';
-    commentsAt(doc.path, 'doc', null).forEach(saved => list.appendChild(commentCard(saved)));
+    commentsIn(doc.path, 'doc').forEach(saved => list.appendChild(commentCard(saved)));
+    orphans.forEach(saved => {
+      const card = commentCard(saved);
+      const note = document.createElement('div');
+      note.className = 'orphan';
+      note.textContent = 'Commented text has changed: “' + saved.event.quote + '”';
+      card.insertBefore(note, card.querySelector('.text'));
+      list.appendChild(card);
+    });
   }
 
   // A <div> can't sit between table rows, so after a <tr> the node gets its own
@@ -355,15 +378,18 @@
     closePopover();
     const source = await docText(doc);
     const view = currentViewFor(doc.path);
-    if (view === 'source') renderSource(pane, doc, source);
-    else if (view === 'gherkin') renderGherkin(pane, doc, source);
-    else renderRendered(pane, doc, id, source);
+    let anchors;
+    if (view === 'source') anchors = renderSource(pane, source);
+    else if (view === 'gherkin') anchors = renderGherkin(pane, source);
+    else anchors = renderRendered(pane, id, source);
+    const orphans = attachCommentCards(doc.path, view, anchors);
     renderHeader(doc, view);
-    renderDocComments(doc);
+    renderDocComments(doc, orphans);
     pane.scrollTop = scrollTop;
   }
 
-  function renderRendered(pane, doc, id, source) {
+  // Each renderer fills the pane and returns its commentable anchors.
+  function renderRendered(pane, id, source) {
     pane.innerHTML = marked.parse(source);
     pane.querySelectorAll('img').forEach(img => {
       const src = img.getAttribute('src') || '';
@@ -371,21 +397,23 @@
       if (/^([a-z][a-z0-9+.-]*:|\/)/i.test(src)) return;
       img.src = '/asset/' + id + '/' + src.split('/').map(encodeURIComponent).join('/');
     });
-    Array.from(pane.children).forEach((el, i) => {
+    return Array.from(pane.children).map((el, i) => {
+      const quote = blockQuote(el);
       el.classList.add('block');
       el.addEventListener('click', (e) => {
         if (e.target.closest('a') || e.target.closest('.popover')) return;
-        openPopover(el, { view: 'rendered', blockIndex: i, quote: blockQuote(el) });
+        openPopover(el, { view: 'rendered', blockIndex: i, quote: quote });
       });
-      attachComments(el, doc.path, 'rendered', i);
+      return { el: el, index: i, quote: quote };
     });
   }
 
-  function renderSource(pane, doc, source) {
+  function renderSource(pane, source) {
     const table = document.createElement('table');
     table.className = 'source';
-    source.split('\n').forEach((text, index) => {
+    const anchors = source.split('\n').map((text, index) => {
       const line = index + 1;
+      const quote = text.trim().slice(0, QUOTE_MAX_CHARS);
       const row = document.createElement('tr');
       row.className = 'block';
       const number = document.createElement('td');
@@ -398,18 +426,20 @@
       row.appendChild(code);
       row.addEventListener('click', (e) => {
         if (e.target.closest('.popover')) return;
-        openPopover(row, { view: 'source', line: line, quote: text.trim().slice(0, QUOTE_MAX_CHARS) });
+        openPopover(row, { view: 'source', line: line, quote: quote });
       });
       table.appendChild(row);
-      attachComments(row, doc.path, 'source', line);
+      return { el: row, index: line, quote: quote };
     });
     pane.innerHTML = '';
     pane.appendChild(table);
+    return anchors;
   }
 
-  function renderGherkin(pane, doc, source) {
+  function renderGherkin(pane, source) {
     pane.innerHTML = '';
-    parseGherkinBlocks(source).forEach((block, i) => {
+    return parseGherkinBlocks(source).map((block, i) => {
+      const anchor = gherkinAnchor(block, i);
       const el = document.createElement('div');
       el.className = 'block gherkin-block';
       el.dataset.kind = block.kind;
@@ -418,10 +448,10 @@
       if (header) header.classList.add('gl-header');
       el.addEventListener('click', (e) => {
         if (e.target.closest('.popover')) return;
-        openPopover(el, gherkinAnchor(block, i));
+        openPopover(el, anchor);
       });
       pane.appendChild(el);
-      attachComments(el, doc.path, 'gherkin', i);
+      return { el: el, index: i, quote: anchor.quote };
     });
   }
 
@@ -604,10 +634,20 @@
   handle.addEventListener('pointermove', (e) => {
     if (draggedWidth !== null) draggedWidth = applySidebarWidth(e.clientX);
   });
-  handle.addEventListener('pointerup', () => {
+  // pointercancel/lostpointercapture end a drag the OS interrupted; keep the
+  // width reached so far, as a normal release would.
+  function endSidebarDrag() {
     handle.classList.remove('dragging');
     if (draggedWidth !== null) saveSidebarWidth(draggedWidth);
     draggedWidth = null;
+  }
+  handle.addEventListener('pointerup', endSidebarDrag);
+  handle.addEventListener('pointercancel', endSidebarDrag);
+  handle.addEventListener('lostpointercapture', endSidebarDrag);
+  // Re-clamp when the window shrinks so the sidebar never covers the doc.
+  window.addEventListener('resize', () => {
+    const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-w'));
+    if (current) applySidebarWidth(current);
   });
   restoreSidebarWidth();
 

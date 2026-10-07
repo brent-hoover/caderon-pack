@@ -98,7 +98,8 @@ function pollOnce(session) {
     const stopReason = readStopReason(session);
     const unread = readUnreadEvents(session);
     if (stopReason !== null) return { unread, trailer: stoppedLine(stopReason), exitCode: EXIT_SERVER_STOPPED };
-    if (containsTrigger(unread.text)) return { unread, trailer: '', exitCode: EXIT_DELIVERED };
+    const submitted = throughLastTrigger(unread);
+    if (submitted.text) return { unread: submitted, trailer: '', exitCode: EXIT_DELIVERED };
     return null;
   } catch (e) {
     // stop-server.sh deletes /tmp sessions; that can land between any two
@@ -157,11 +158,18 @@ function saveCursor(session, offset) {
   fs.renameSync(tmpFile, session.cursorFile);
 }
 
-function containsTrigger(unreadText) {
-  return unreadText.split('\n').some(line => {
-    if (!line) return false;
-    return TRIGGER_EVENT_TYPES.includes(JSON.parse(line).type);
+// The unread events up to and including the last submit/approve. Comments
+// saved after it belong to the next batch, which the operator hasn't sent yet.
+// Returns empty text when there is no trigger.
+function throughLastTrigger(unread) {
+  const lines = unread.text.split('\n').filter(Boolean).map(line => line + '\n');
+  let lastTrigger = -1;
+  lines.forEach((line, i) => {
+    if (TRIGGER_EVENT_TYPES.includes(JSON.parse(line).type)) lastTrigger = i;
   });
+  const text = lines.slice(0, lastTrigger + 1).join('');
+  const startOffset = unread.endOffset - Buffer.byteLength(unread.text);
+  return { text, endOffset: startOffset + Buffer.byteLength(text) };
 }
 
 // Returns null while the server is running. The server writes server-stopped
