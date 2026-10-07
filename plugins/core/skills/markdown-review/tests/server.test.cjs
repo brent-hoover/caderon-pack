@@ -193,7 +193,27 @@ test('WS upgrade without a key/cookie is rejected before the 101 response', asyn
   assert.ok(!data.startsWith('HTTP/1.1 101'));
 });
 
-const RING_SETTLE_MAX_MS = 3000;
+test('Given no key, when GET /events, then it is rejected', async () => {
+  assert.strictEqual((await fetch(base + '/events')).status, 403);
+});
+
+test('Given no events yet, when GET /events, then it returns an empty list', async () => {
+  assert.deepStrictEqual(await (await get('/events')).json(), []);
+});
+
+test('Given events were sent, when GET /events, then it returns them parsed and skips a partial line', async () => {
+  const port = Number(base.split(':').pop());
+  await sendReviewEvent(port, TOKEN, { type: 'comment', doc: '/x/plan.md', scope: 'doc', comment: 'first' });
+  await sendReviewEvent(port, TOKEN, { type: 'submit' });
+  await sleep(300);
+  fs.appendFileSync(path.join(stateDir, 'events'), '{"type":"comm');
+  const events = await (await get('/events')).json();
+  assert.deepStrictEqual(events.map(e => e.type), ['comment', 'submit']);
+  assert.strictEqual(events[0].comment, 'first');
+});
+
+const RING_WAIT_MS = 1000;
+const NO_RING_WAIT_MS = 3000;
 
 function startRingServer(extraEnv) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-ring-'));
@@ -212,43 +232,59 @@ function readCalls(callsFile) {
   return fs.existsSync(callsFile) ? fs.readFileSync(callsFile, 'utf-8').trim().split('\n').filter(Boolean) : [];
 }
 
-test('Given cmux, when a burst of 3 comments and 1 approve arrives, then one ring summarises it', async () => {
+async function waitForCall(callsFile, sinceMs) {
+  while (readCalls(callsFile).length === 0 && Date.now() - sinceMs < RING_WAIT_MS) await sleep(25);
+  return readCalls(callsFile);
+}
+
+test('Given cmux, when three comments are submitted, then one ring summarises them within 1s', async () => {
   const ring = startRingServer({ CMUX_SURFACE_ID: 'test-surface' });
   try {
     const info = await waitForStart(ring.p);
     const send = (e) => sendReviewEvent(info.port, ring.token, e);
     await send({ type: 'comment', doc: '/d/a.md', blockIndex: 1, quote: 'q', comment: 'one' });
     await send({ type: 'comment', doc: '/d/a.md', blockIndex: 2, quote: 'q', comment: 'two' });
-    await send({ type: 'comment', doc: '/d/a.md', scope: 'doc', comment: 'three' });
-    await send({ type: 'approve', doc: '/d/b.md' });
-    const lastSent = Date.now();
-    await sleep(1700);
-    assert.deepStrictEqual(readCalls(ring.callsFile), [], 'rang before the quiet window ended');
-    while (readCalls(ring.callsFile).length === 0 && Date.now() - lastSent < RING_SETTLE_MAX_MS) await sleep(50);
-    assert.ok(Date.now() - lastSent < RING_SETTLE_MAX_MS, 'no ring within 3s of the last event');
-    await sleep(500);
-    assert.deepStrictEqual(readCalls(ring.callsFile), [
-      'notify --surface test-surface --title Review feedback --body 3 comments, 1 approval on a.md, b.md --desktop false'
+    await send({ type: 'comment', doc: '/d/b.md', scope: 'doc', comment: 'three' });
+    await sleep(2500);
+    assert.deepStrictEqual(readCalls(ring.callsFile), [], 'rang before submit');
+    const submittedAt = Date.now();
+    await send({ type: 'submit' });
+    assert.deepStrictEqual(await waitForCall(ring.callsFile, submittedAt), [
+      'notify --surface test-surface --title Review feedback --body 3 comments on a.md, b.md --desktop false'
     ]);
   } finally { ring.p.kill(); }
 });
 
-test('Given no CMUX_SURFACE_ID, when a comment arrives, then cmux is never called', async () => {
+test('Given cmux, when a doc is approved, then one ring names the approval', async () => {
+  const ring = startRingServer({ CMUX_SURFACE_ID: 'test-surface' });
+  try {
+    const info = await waitForStart(ring.p);
+    const approvedAt = Date.now();
+    await sendReviewEvent(info.port, ring.token, { type: 'approve', doc: '/d/b.md' });
+    assert.deepStrictEqual(await waitForCall(ring.callsFile, approvedAt), [
+      'notify --surface test-surface --title Review feedback --body 1 approval on b.md --desktop false'
+    ]);
+  } finally { ring.p.kill(); }
+});
+
+test('Given no CMUX_SURFACE_ID, when comments are submitted, then cmux is never called', async () => {
   const ring = startRingServer({});
   try {
     const info = await waitForStart(ring.p);
     await sendReviewEvent(info.port, ring.token, { type: 'comment', doc: '/d/a.md', scope: 'doc', comment: 'x' });
-    await sleep(RING_SETTLE_MAX_MS);
+    await sendReviewEvent(info.port, ring.token, { type: 'submit' });
+    await sleep(NO_RING_WAIT_MS);
     assert.deepStrictEqual(readCalls(ring.callsFile), []);
   } finally { ring.p.kill(); }
 });
 
-test('Given the cmux call fails, when a comment arrives, then the failure is logged and the event kept', async () => {
+test('Given the cmux call fails, when comments are submitted, then the failure is logged and events kept', async () => {
   const ring = startRingServer({ CMUX_SURFACE_ID: 'test-surface', STUB_EXIT: '1' });
   try {
     const info = await waitForStart(ring.p);
     await sendReviewEvent(info.port, ring.token, { type: 'comment', doc: '/d/a.md', scope: 'doc', comment: 'kept' });
-    await sleep(RING_SETTLE_MAX_MS);
+    await sendReviewEvent(info.port, ring.token, { type: 'submit' });
+    await sleep(RING_WAIT_MS);
     assert.match(ring.stdout(), /"type":"cmux-notify-failed"/);
     assert.match(fs.readFileSync(path.join(ring.stateDir, 'events'), 'utf-8'), /kept/);
   } finally { ring.p.kill(); }

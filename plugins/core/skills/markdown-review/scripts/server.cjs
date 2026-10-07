@@ -355,6 +355,9 @@ function handleRequest(req, res) {
   } else if (pathname === '/docs') {
     res.writeHead(200, securityHeaders({ 'Content-Type': 'application/json' }));
     res.end(JSON.stringify(docsPayload()));
+  } else if (pathname === '/events') {
+    res.writeHead(200, securityHeaders({ 'Content-Type': 'application/json' }));
+    res.end(JSON.stringify(recordedEvents()));
   } else if (pathname.startsWith('/doc/')) {
     const docPath = docById(pathname.slice(5));
     let body = null;
@@ -448,6 +451,23 @@ function handleUpgrade(req, socket) {
   socket.on('error', () => clients.delete(socket));
 }
 
+const EVENTS_FILE = path.join(STATE_DIR, 'events');
+const RECORDED_EVENT_TYPES = ['comment', 'approve', 'submit'];
+
+// Every review event of this session, for the viewer to rebuild comment cards
+// after a reload. Only complete lines: an append may be in flight.
+function recordedEvents() {
+  let content;
+  try {
+    content = fs.readFileSync(EVENTS_FILE, 'utf-8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    throw e;
+  }
+  const completeLines = content.slice(0, content.lastIndexOf('\n') + 1).split('\n').filter(Boolean);
+  return completeLines.map(line => JSON.parse(line));
+}
+
 function handleMessage(text) {
   let event;
   try {
@@ -460,33 +480,32 @@ function handleMessage(text) {
   console.log(JSON.stringify({ source: 'user-event', ...event }));
   // Persist review events. Unlike the fork, the events file is append-only:
   // nothing clears it; wait-for-feedback.cjs tracks a read cursor into it.
-  if (event && (event.type === 'comment' || event.type === 'approve')) {
-    fs.appendFileSync(path.join(STATE_DIR, 'events'), JSON.stringify(event) + '\n');
-    if (CMUX_SURFACE_ID) scheduleCmuxRing(event);
+  if (event && RECORDED_EVENT_TYPES.includes(event.type)) {
+    fs.appendFileSync(EVENTS_FILE, JSON.stringify(event) + '\n');
+    if (CMUX_SURFACE_ID) tallyForCmuxRing(event);
   }
 }
 
 // ========== cmux ring ==========
 
-// Same quiet window as wait-for-feedback.cjs, so one review burst rings once.
-const RING_QUIET_MS = 2000;
-let pendingBurst = null;
-let ringTimer = null;
+// Comments are tallied silently; submit or approve — the same events that
+// wake the agent — ring once with the tally.
+let pendingTally = null;
 
-function scheduleCmuxRing(event) {
-  if (!pendingBurst) pendingBurst = { comments: 0, approvals: 0, docs: [] };
-  if (event.type === 'comment') pendingBurst.comments++;
-  else pendingBurst.approvals++;
-  const docName = path.basename(String(event.doc));
-  if (!pendingBurst.docs.includes(docName)) pendingBurst.docs.push(docName);
-  if (ringTimer) clearTimeout(ringTimer);
-  ringTimer = setTimeout(ringCmuxSurface, RING_QUIET_MS);
+function tallyForCmuxRing(event) {
+  if (!pendingTally) pendingTally = { comments: 0, approvals: 0, docs: [] };
+  if (event.type === 'comment') pendingTally.comments++;
+  if (event.type === 'approve') pendingTally.approvals++;
+  if (event.doc) {
+    const docName = path.basename(String(event.doc));
+    if (!pendingTally.docs.includes(docName)) pendingTally.docs.push(docName);
+  }
+  if (event.type !== 'comment') ringCmuxSurface();
 }
 
 function ringCmuxSurface() {
-  const body = describeBurst(pendingBurst);
-  pendingBurst = null;
-  ringTimer = null;
+  const body = describeTally(pendingTally);
+  pendingTally = null;
   // execFile, not exec: the body carries doc names sent by the browser.
   // --desktop false: pane ring + sidebar badge without a macOS banner.
   const args = ['notify', '--surface', CMUX_SURFACE_ID, '--title', 'Review feedback',
@@ -496,11 +515,12 @@ function ringCmuxSurface() {
   });
 }
 
-function describeBurst(burst) {
+function describeTally(tally) {
   const parts = [];
-  if (burst.comments > 0) parts.push(burst.comments + (burst.comments === 1 ? ' comment' : ' comments'));
-  if (burst.approvals > 0) parts.push(burst.approvals + (burst.approvals === 1 ? ' approval' : ' approvals'));
-  return parts.join(', ') + ' on ' + burst.docs.join(', ');
+  if (tally.comments > 0) parts.push(tally.comments + (tally.comments === 1 ? ' comment' : ' comments'));
+  if (tally.approvals > 0) parts.push(tally.approvals + (tally.approvals === 1 ? ' approval' : ' approvals'));
+  if (parts.length === 0) return 'Feedback submitted';
+  return parts.join(', ') + ' on ' + tally.docs.join(', ');
 }
 
 function broadcast(msg) {

@@ -303,7 +303,8 @@ Remove the quiet window and `--quiet-ms`.
 
 ### 10. Server: `GET /events`, ring on submit/approve
 
-**Status:** ☐
+**Status:** ☑ — 5 new tests failed first, then 53/53. A submit with no tallied comments (e.g. after a
+server restart) rings "Feedback submitted".
 
 **What:** `scripts/server.cjs`, `tests/server.test.cjs` (design §2 revised, Interfaces HTTP).
 
