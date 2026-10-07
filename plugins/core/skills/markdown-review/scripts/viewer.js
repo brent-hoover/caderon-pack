@@ -296,9 +296,10 @@
   // anchors: [{el, index, quote}] for the elements just rendered. A comment
   // attaches to the element whose text still matches its quote, so cards
   // follow their text when the agent edits the doc. Quotes can repeat (two
-  // identical headings): the event's `occurrence` says which one, falling back
-  // to the match nearest the original position. Returns the events of
-  // comments whose text is gone.
+  // identical headings): a match still at the original position wins, then
+  // the event's `occurrence`, then the match nearest the original position.
+  // A heuristic: there is no edit diffing. Returns
+  // the events of comments whose text is gone.
   function attachCommentCards(docPath, view, anchors) {
     const cardsByAnchor = new Map();
     const orphans = [];
@@ -343,8 +344,11 @@
 
   function nearestMatchingAnchor(anchors, event) {
     const matches = anchors.filter(anchor => anchor.quote === event.quote);
-    if (event.occurrence !== undefined && matches[event.occurrence]) return matches[event.occurrence];
     const original = anchorIndexOf(event);
+    // Unchanged position first; occurrence only when the text has moved.
+    const atOriginal = matches.find(anchor => anchor.index === original);
+    if (atOriginal) return atOriginal;
+    if (event.occurrence !== undefined && matches[event.occurrence]) return matches[event.occurrence];
     let nearest = null;
     matches.forEach(anchor => {
       if (nearest === null || Math.abs(anchor.index - original) < Math.abs(nearest.index - original)) nearest = anchor;
