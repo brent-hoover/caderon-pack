@@ -12,10 +12,13 @@ problem: ./problem.md
 
 ## Summary
 
-A new `wait-for-feedback.cjs` script, run by the agent with Bash `run_in_background`, waits until the
-session's `events` file holds unread browser feedback that has gone quiet for 2s, prints the unread
-events, advances a read cursor past them, and exits — which gives the idle agent a new turn. The agent re-arms it at the end of every turn unless one is already running. Separately,
-the server rings the agent's cmux surface when feedback arrives, if it runs under cmux. In the
+Comments saved in the browser are recorded but do not wake the agent; the operator ends a batch
+with **Submit comments** or **Approve**. A new `wait-for-feedback.cjs` script, run by the agent with
+Bash `run_in_background`, waits until the session's `events` file holds an unread `submit` or
+`approve` event, prints every unread event, advances a read cursor past them, and exits — which gives
+the idle agent a new turn. The agent re-arms it at the end of every turn unless one is already running. Separately,
+the server rings the agent's cmux surface on submit or approve, if it runs under cmux. Saved
+comments stay visible in the viewer as cards marked pending or sent, rebuilt from `events` on load. In the
 viewer, each doc is rendered by file type — markdown via `marked` (with a Source toggle), `.feature`
 via a new line-based Gherkin renderer, anything else as numbered source lines — and the sidebar gets
 a drag handle and full-path tooltips.
@@ -54,10 +57,10 @@ cursor (truncated by an agent following the pre-1.7 contract), the cursor resets
    → print `{"type":"server-stopped","reason":"session-removed"}`,
    exit 3. (`stop-server.sh` deletes `/tmp/md-review-*` session dirs; without this the watcher would
    poll forever.)
-2. If there are unread events and `events` was last modified ≥ `--quiet-ms` (default 2000) ago →
-   deliver (below), exit 0.
+2. If the unread events include a `submit` or `approve` event → deliver all unread events (the
+   comments and the trigger), exit 0. Unread comments with no trigger after them keep waiting.
 3. Else if `state/server-stopped` holds a complete JSON marker → deliver any unread events
-   regardless of the quiet window, then print
+   (even with no trigger among them), then print
    `{"type":"server-stopped","reason":<reason from server-stopped>}`, exit 3. The marker is checked
    *before* events are read (the server appends its last events before writing the marker), and a
    half-written marker counts as "not stopped yet", so feedback sent just before a stop is never
@@ -79,14 +82,19 @@ watcher delivers them (problem criteria 2–4).
 `--session-dir` is required: the agent always knows its own session dir, and a "newest session"
 default would let one agent consume another agent's events.
 
-**Timing budget** (problem criterion 2, ≤ 3s after the last event): quiet window 2000ms + poll
-≤ 250ms = ≤ 2250ms, leaving ~750ms for Claude Code to re-invoke the agent. Raising
-`--quiet-ms` above 2000 breaks the criterion.
+**Timing budget** (problem criterion 2, ≤ 1s after submit/approve): poll ≤ 250ms, leaving ~750ms
+for Claude Code to re-invoke the agent.
+
+*Revised 2026-10-07 after the end-to-end run:* the first version woke the agent once events had
+been quiet for 2s. Real review comments are 10–30s apart (each takes time to write), so it woke the
+agent after every comment and the agent started editing mid-review. The operator now decides when a
+batch is done.
 
 ### 2. cmux ring — `server.cjs`
 
-In `handleMessage`, after appending a `comment` / `approve` event, if `process.env.CMUX_SURFACE_ID`
-is set, (re)start a 2s debounce timer; when it fires, run one notify for the burst:
+In `handleMessage`, `comment` events are tallied (count and doc basenames) since the last ring. On a
+`submit` or `approve` event, if `process.env.CMUX_SURFACE_ID` is set, the server rings once with the
+tally and resets it:
 
 ```
 cmux notify --surface $CMUX_SURFACE_ID --title "Review feedback" \
@@ -140,13 +148,28 @@ color, consecutive `table` lines as a real `<table>`, `comment` lines muted, tag
 `viewer.html`, new split/join in `viewerPage()`) and is also `require`-able from Node tests; it ends
 with a `typeof module !== 'undefined'` guarded `module.exports` so one file serves both.
 
-**Comment markers** are keyed by view: `commented: path → view → Set(index)`, where index is
-`blockIndex` for `rendered` / `gherkin` and `line` for `source`. Today's `path → Set(blockIndex)`
-would light up the wrong elements when switching views.
+**Comment markers** are per view: a comment made in Source marks a line, not the rendered block with
+the same index (see *Comment cards* below, which now carry this).
 
 **Titles** (`titleFor`): `.md` → first `# ` heading as today; `.feature` → the `Feature:` name;
 otherwise → file name. The sidebar item and doc header get `title="<absolute path>"` so the full
 path shows on hover.
+
+**Submit comments**: a header button, `Submit comments (N)`, where N counts comments saved since the
+last submit or approve (all docs). Disabled at 0. Click → `{"type":"submit"}` event; N resets.
+Approve also marks pending comments as sent (the watcher delivers them with the approve).
+
+**Comment cards**: every saved comment is shown as a card — inline right after the element it
+comments on (block, source line, or Gherkin block; several cards stack), doc-level comments in a list
+above the footer box. Each card shows the comment text, the selection if any, and a *pending* /
+*sent* badge. A comment is *sent* iff a `submit` or `approve` event comes after it in `events`.
+Cards render only in the view the comment was made in, matched by `blockIndex` (rendered/gherkin) or
+`line` (source).
+
+On load the viewer fetches `GET /events` and rebuilds the cards and the pending count from it, so
+they survive reloads and server restarts within a session. After that it updates them locally as
+the operator comments or submits. The per-view comment-marker map (`commented`) is replaced by this
+card list, which also drives the `commented` class.
 
 ### 4. Viewer — resizable sidebar
 
@@ -187,11 +210,11 @@ wrapped in try/catch because it can be unavailable, and the default width is use
 
 ## Interfaces
 
-**CLI** — `node scripts/wait-for-feedback.cjs --session-dir <dir> [--quiet-ms <n>] [--status]`
+**CLI** — `node scripts/wait-for-feedback.cjs --session-dir <dir> [--status]`
 
 | Exit | stdout | Meaning |
 |------|--------|---------|
-| 0 | unread events, JSONL | feedback batch |
+| 0 | unread events, JSONL (ends with a `submit` or `approve`) | feedback batch |
 | 0 (`--status`) | `{"watching":true\|false}` | watcher liveness, no waiting |
 | 3 | unread events (if any), then `{"type":"server-stopped","reason":…}` | session's server stopped, or its dir was removed (`reason: "session-removed"`) |
 | 4 | `{"type":"already-watching","pid":N}` | another live watcher owns this session |
@@ -206,6 +229,12 @@ wrapped in try/catch because it can be unavailable, and the default width is use
 | `scenario` | `view` is `gherkin` and the block kind is `scenario` | text after the keyword, e.g. `Each corpse's record carries its own reason` |
 | `blockIndex` | `view` is `rendered` or `gherkin` | index of the top-level rendered block (`rendered`) or of the Gherkin block (`gherkin`) |
 
+New event type, sent by the Submit button:
+
+```jsonl
+{"type":"submit","timestamp":…}
+```
+
 ```jsonl
 {"type":"comment","doc":"/abs/a.feature","view":"gherkin","blockIndex":3,"line":28,"scenario":"Each corpse's record carries its own reason","quote":"Scenario: Each corpse's record…","selection":null,"comment":"…","timestamp":…}
 {"type":"comment","doc":"/abs/plan.md","view":"source","line":42,"quote":"- step text","selection":null,"comment":"…","timestamp":…}
@@ -215,7 +244,9 @@ wrapped in try/catch because it can be unavailable, and the default width is use
 **Environment** — `MDREVIEW_CMUX_BIN` (default `cmux`): binary used for the ring. `CMUX_SURFACE_ID`:
 inherited; enables the ring.
 
-HTTP routes and WebSocket messages: unchanged.
+**HTTP** — new `GET /events` (same session-key auth as every route): the session's `events` file as
+a JSON array of the parsed complete lines; `[]` if the file doesn't exist. Read-only. WebSocket
+messages: unchanged.
 
 ## Data model
 
@@ -227,6 +258,7 @@ HTTP routes and WebSocket messages: unchanged.
 - `state/watcher.pid` — pid of the live watcher; absent when none.
 - Browser `localStorage['mdreview-sidebar-width']` — integer px.
 - Per-doc view choice — in-memory in the viewer; resets on reload.
+- Comment cards and the pending count — derived from `GET /events`; no new storage.
 
 ## Alternatives considered
 
@@ -240,9 +272,10 @@ comments; no way to anchor a comment to a line.
 
 ### Complete
 
-The chosen design above: single watcher with a read cursor, quiet-window debounce and
-server-stopped handling; file-type renderers including a small Gherkin renderer; source view with line comments;
-drag-resize sidebar; optional debounced cmux ring from the server.
+The chosen design above: single watcher with a read cursor that wakes on submit/approve, with
+server-stopped handling; comment cards rebuilt from `events`; file-type renderers including a small
+Gherkin renderer; source view with line comments; drag-resize sidebar; optional cmux ring from the
+server.
 
 ### Optimal
 
@@ -270,11 +303,16 @@ delivery keep us below Optimal.
 - **Partial writes** — a line still being written when the watcher reads has no trailing `\n` yet;
   it stays past the cursor and is delivered on the next wake. Tested by writing a line in two halves
   around a watcher run.
-- **Throwaway sessions** — feedback sent within the quiet window before `stop-server.sh` deletes a
-  `/tmp` session dir is lost with the dir; a deletion while the watcher is saving its cursor (after
+- **Throwaway sessions** — feedback not yet delivered when `stop-server.sh` deletes a `/tmp`
+  session dir is lost with the dir; a deletion while the watcher is saving its cursor (after
   printing) exits 0 or 1 instead of 3. Accepted: `/tmp` sessions are throwaway, and this is a
   single-user tool — the operator accepts multi-process race edge cases (2026-10-07, roborev
   job 3858).
+- **Unsubmitted comments** — comments the operator never submits (no Submit, no Approve) are not
+  delivered while the server runs; they are delivered when it stops (exit 3) and stay visible as
+  *pending* cards meanwhile.
+- **`GET /events` exposes comment text** — to anyone holding the session key, who can already write
+  events; no new exposure.
 - **Agent forgets to re-arm** — the next batch is not acted on until the operator types (today's
   behavior). Mitigated by making status-check-then-arm an explicit end-of-turn step in `SKILL.md`;
   the cmux ring still alerts the operator.
@@ -322,3 +360,6 @@ delivery keep us below Optimal.
 - 2026-10-07: roborev (jobs 3853, 3856) — lock published by hard link (no empty pid file; empty or
   dead-pid lock is replaced); stop marker checked before reading events and a partial marker means
   "not yet"; ENOENT mid-poll routes to `session-removed`. Concurrent stale-lock recovery accepted.
+- 2026-10-07: End-to-end findings (operator decision) — wake on `submit`/`approve` only (quiet
+  window and `--quiet-ms` removed; ring on submit/approve, no debounce); Submit comments button;
+  comment cards with pending/sent, rebuilt from new `GET /events`.

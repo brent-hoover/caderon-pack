@@ -45,6 +45,9 @@ agent did not react.
 4. **Markdown source can't be seen.** The viewer shows only rendered markdown, so the operator can't
    see the exact source text a comment refers to — the text the agent will grep and edit — or check
    markup that rendered unexpectedly.
+5. **Saved comments vanish.** After a comment is saved, only a colored border remains (inline) or
+   the box simply clears (doc-level); the operator can't see what they wrote. Found in the
+   2026-10-07 end-to-end run.
 
 ## Complexity drivers
 
@@ -79,9 +82,10 @@ agent did not react.
 1. The operator can read every doc's full title and full path from the viewer, and can give the
    sidebar more room when titles are long; that layout choice survives a page reload in the same
    browser.
-2. While the agent is idle, a browser Approve or comment gives it a new turn with no terminal input,
-   within 3s of the last event in a burst. Events less than 2s apart produce one agent turn, not one
-   per click.
+2. While the agent is idle, a browser Approve or an explicit submit of comments gives it a new
+   turn with no terminal input, within 1s. Saving a comment alone never gives the agent a turn — the
+   operator decides when a batch of comments is finished. (Revised 2026-10-07 after the end-to-end
+   run: comments are typically 10–30s apart, so a quiet-window debounce woke the agent per comment.)
 3. Events that arrive while the agent is mid-turn are acted on in that turn or the next, and are
    never dropped.
 4. Events the agent has already read never cause another agent turn.
@@ -91,10 +95,12 @@ agent did not react.
    comment on an individual scenario.
 6. Any other non-`.md` file shows its source verbatim and the operator can comment on a specific
    part of it. A `.md` doc can be switched to its source and back.
-7. When the agent's session runs in cmux, receiving browser feedback rings that agent's cmux
+7. When the agent's session runs in cmux, a submit or approve rings that agent's cmux
    surface (notification + attention ring). Outside cmux, or if the cmux CLI fails, review works
    exactly as without it.
-8. Existing tests pass; new automated tests cover the notification path and any server changes;
+8. Every comment the operator saved stays visible next to what it comments on, marked as pending
+   or sent, including after a page reload.
+9. Existing tests pass; new automated tests cover the notification path and any server changes;
    each viewer change is checked by hand in the cmux browser.
 
 ## Open questions
@@ -114,3 +120,5 @@ agent did not react.
 - 2026-10-07: Added optional cmux notification ring on feedback receipt (operator request); doorbell
   stays out of scope.
 - 2026-10-07: Moved Out of scope to design.md (template: design.md is its single home).
+- 2026-10-07: End-to-end findings — criterion 2 now "wake on submit/approve only"; new problem 5 and
+  criterion 8 (saved comments must stay visible). Operator decision.

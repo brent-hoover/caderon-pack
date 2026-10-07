@@ -265,7 +265,10 @@ out of scope), `server.cjs` comment in `handleMessage`, version 1.6.0 → 1.7.0 
 
 ### 8. End-to-end in cmux
 
-**Status:** ☐
+**Status:** ☐ — first run 2026-10-07 (quiet-window design): (a) Approve → wake ~2s, ring ✅;
+(b) comments < 2s apart grouped ✅; (c) comment while agent mid-turn delivered next batch, nothing
+lost ✅. Found: real comments are 10–30s apart → one wake per comment; saved comments invisible.
+Design revised → steps 9–12, then re-run.
 
 **What:** No code. In a fresh Claude Code session in cmux with the plugin loaded from the worktree:
 start a review of this feature's docs, let the agent arm the watcher, then from the browser:
@@ -278,6 +281,77 @@ start a review of this feature's docs, let the agent arm the watcher, then from 
 turn with all three; (c) acted on in the next turn, nothing lost (`state/events` matches what
 was sent and `events.cursor` equals its size); (d) the agent receives the comment and the stopped reason, and does not
 restart. Results recorded in this step.
+
+### 9. Watcher: wake on submit/approve only
+
+**Status:** ☐
+
+**What:** `scripts/wait-for-feedback.cjs`, `tests/wait-for-feedback.test.cjs` (design §1, revised).
+Remove the quiet window and `--quiet-ms`.
+
+**Tasks:**
+
+- [ ] Tests first: comments only → still waiting after 1.5s; comments then `submit` → exit 0 within
+  1s, stdout = all of them; `approve` alone → exit 0; comments after the trigger written in the same
+  read are delivered too; server stopped with only comments → exit 3 delivering them; `--quiet-ms`
+  → exit 1 unknown argument. Rewrite or drop the quiet-window tests (burst, `--quiet-ms 500`).
+- [ ] Implement.
+
+**Why:** Problem criterion 2 (revised).
+
+**Verify:** `node --test tests/` green.
+
+### 10. Server: `GET /events`, ring on submit/approve
+
+**Status:** ☐
+
+**What:** `scripts/server.cjs`, `tests/server.test.cjs` (design §2 revised, Interfaces HTTP).
+
+**Tasks:**
+
+- [ ] Tests first: `GET /events` without key → 403; with key and no file → `[]`; after two events →
+  both, parsed; a trailing partial line is omitted. Ring: three comments then a submit → one call
+  with body `3 comments on a.md` within 1s of the submit; comments alone → no call within 3s;
+  approve → one call. Keep the cmux-failure test.
+- [ ] Implement; drop the debounce timer.
+
+**Why:** Cards need history on load; ring must match the new wake trigger.
+
+**Verify:** `node --test tests/` green.
+
+### 11. Viewer: Submit button and comment cards
+
+**Status:** ☐
+
+**What:** `scripts/viewer.js`, `scripts/viewer.html` (design §3 *Submit comments*, *Comment
+cards*).
+
+**Tasks:**
+
+- [ ] `Submit comments (N)` header button; disabled at 0; sends `submit`.
+- [ ] Load `GET /events` on start; build cards + pending count; replace the `commented` map.
+- [ ] Inline cards after their element per view; doc-level card list above the footer;
+  pending/sent badges; Approve and Submit flip pending → sent.
+
+**Why:** Problem 5 / criterion 8; operator controls when the agent wakes.
+
+**Verify:** Manual in Chromium (Playwright): comment in each view → card appears with *pending*;
+toggle views → cards follow their view; reload → cards and count restored; Submit → badges *sent*,
+count 0, `submit` in `events`; doc-level comment shows in the list.
+
+### 12. Docs for the revised contract
+
+**Status:** ☐
+
+**What:** `SKILL.md` (watcher wakes on submit/approve; `submit` event; exit-3 may carry unsubmitted
+comments), skill `DESIGN.md`.
+
+**Verify:** both read end to end; no remaining quiet-window wording (`rg -n "quiet|2s"` in the skill
+dir); `node --test tests/` green.
+
+Then re-run step 8 (a)–(d) with the operator, adapted: (a) Approve; (b) three comments then Submit →
+one wake, one ring; (c) comment + Submit while the agent is mid-turn; (d) stop with unsubmitted
+comments → delivered with exit 3.
 
 ## Rollback
 
@@ -295,3 +369,4 @@ remain readable since all new fields are optional.
   and `--quiet-ms` tests; step 5 split into 5a–5c; exact sync-script check and codex manifest;
   storage-blocked check method; multi-doc ring body.
 - 2026-10-07: Step 3 tests reworked for the read-cursor design (roborev job 3848).
+- 2026-10-07: Steps 9–12 added after the end-to-end run (submit/approve wake, comment cards).
