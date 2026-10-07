@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { parseGherkinBlocks } = require('../scripts/gherkin.cjs');
+const { parseGherkinBlocks, splitTableRow } = require('../scripts/gherkin.cjs');
 
 const SAMPLE = fs.readFileSync(path.join(__dirname, 'fixtures', 'sample.feature'), 'utf-8');
 const blocks = parseGherkinBlocks(SAMPLE);
@@ -73,4 +73,9 @@ test('Given a doc string containing the other fence, when parsed, then it closes
   const source = 'Feature: F\n  Scenario: S\n    Given text:\n      """\n      ```\n      # still doc string\n      """\n    # a real comment\n';
   const kinds = parseGherkinBlocks(source).flatMap(b => b.lines.map(l => l.kind));
   assert.deepStrictEqual(kinds, ['keyword', 'keyword', 'step', 'docstring', 'docstring', 'docstring', 'docstring', 'comment', 'blank']);
+});
+
+test('Given a table row with escaped pipes, when split, then escaped pipes stay inside their cell', () => {
+  assert.deepStrictEqual(splitTableRow('  | a\\|b | expected |'), ['a|b', 'expected']);
+  assert.deepStrictEqual(splitTableRow('| x | y |'), ['x', 'y']);
 });

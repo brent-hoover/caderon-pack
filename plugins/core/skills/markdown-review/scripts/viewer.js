@@ -138,8 +138,8 @@
     const extension = extensionOf(doc.path);
     let match = null;
     if (MARKDOWN_EXTENSIONS.includes(extension)) match = text.match(/^#\s+(.+)$/m);
-    else if (extension === GHERKIN_EXTENSION) match = text.match(/^\s*Feature:\s*(.+)$/m);
-    return match ? match[1].trim() : doc.path.split('/').pop();
+    else if (extension === GHERKIN_EXTENSION) match = text.match(/^[ \t]*Feature:[ \t]*(\S.*)$/m);
+    return match && match[1].trim() ? match[1].trim() : doc.path.split('/').pop();
   }
 
   // Recompute currentId from currentPath against the current `docs` array.
@@ -329,6 +329,8 @@
       el.dataset.kind = block.kind;
       if (marks.has(i)) el.classList.add('commented');
       appendGherkinLines(el, block.lines);
+      const header = el.querySelector('.gl-keyword');
+      if (header) header.classList.add('gl-header');
       el.addEventListener('click', (e) => {
         if (e.target.closest('.popover')) return;
         openPopover(el, gherkinAnchor(block, i));
@@ -390,9 +392,9 @@
     table.className = 'gherkin-table';
     lines.forEach((line, rowIndex) => {
       const row = document.createElement('tr');
-      line.text.trim().split('|').slice(1, -1).forEach(cellText => {
+      splitTableRow(line.text).forEach(cellText => {
         const cell = document.createElement(rowIndex === 0 ? 'th' : 'td');
-        cell.textContent = cellText.trim();
+        cell.textContent = cellText;
         row.appendChild(cell);
       });
       table.appendChild(row);

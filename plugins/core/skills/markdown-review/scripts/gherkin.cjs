@@ -80,4 +80,10 @@ function findBlockStarts(lines) {
   return starts;
 }
 
-if (typeof module !== 'undefined') module.exports = { parseGherkinBlocks };
+// Cells of one '| a | b |' table line; '\\|' is a literal pipe inside a cell.
+function splitTableRow(text) {
+  const cells = text.trim().split(/(?<!\\)\|/).slice(1, -1);
+  return cells.map(cell => cell.trim().replace(/\\\|/g, '|'));
+}
+
+if (typeof module !== 'undefined') module.exports = { parseGherkinBlocks, splitTableRow };
