@@ -327,6 +327,10 @@ delivery keep us below Optimal.
   *pending* cards meanwhile.
 - **`GET /events` exposes comment text** — to anyone holding the session key, who can already write
   events; no new exposure.
+- **Repeated quotes (accepted)** — card placement for identical text is a heuristic (unchanged
+  position, then `occurrence`, then nearest); an edit that both shifts positions and changes an
+  earlier duplicate can attach a card to the wrong copy. No edit diffing; operator accepted
+  2026-10-07 (roborev 3876).
 - **Agent forgets to re-arm** — the next batch is not acted on until the operator types (today's
   behavior). Mitigated by making status-check-then-arm an explicit end-of-turn step in `SKILL.md`;
   the cmux ring still alerts the operator.
