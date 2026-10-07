@@ -20,7 +20,8 @@
   // GET /events on load; a comment is sent once a submit or approve on its own
   // doc follows it.
   let savedComments = [];
-  let currentOrphans = [];        // comments of the current doc/view whose text is gone
+  let currentOrphans = [];        // comment events of the current doc/view whose text is gone
+  let renderedAnchors = [];       // [{el, index, quote}] of the doc on screen
   const viewChoice = new Map();   // path -> view the operator toggled to (in-memory; resets on reload)
   const approved = new Map();     // path -> mtime at approval time
   const updated = new Set();      // paths changed since last viewed
@@ -293,16 +294,17 @@
   }
 
   // anchors: [{el, index, quote}] for the elements just rendered. A comment
-  // attaches to the element whose text still matches its quote (preferring its
-  // original position), so cards follow their text when the agent edits the
-  // doc. Comments whose text is gone are returned as orphans.
+  // attaches to the element whose text still matches its quote, so cards
+  // follow their text when the agent edits the doc. Quotes can repeat (two
+  // identical headings): the event's `occurrence` says which one, falling back
+  // to the match nearest the original position. Returns the events of
+  // comments whose text is gone.
   function attachCommentCards(docPath, view, anchors) {
     const cardsByAnchor = new Map();
     const orphans = [];
     commentsIn(docPath, view).forEach(saved => {
-      const matches = anchors.filter(a => a.quote === saved.event.quote);
-      const anchor = matches.find(a => a.index === anchorIndexOf(saved.event)) || matches[0];
-      if (!anchor) { orphans.push(saved); return; }
+      const anchor = nearestMatchingAnchor(anchors, saved.event);
+      if (!anchor) { orphans.push(saved.event); return; }
       if (!cardsByAnchor.has(anchor)) cardsByAnchor.set(anchor, []);
       cardsByAnchor.get(anchor).push(saved);
     });
@@ -339,6 +341,23 @@
     return card;
   }
 
+  function nearestMatchingAnchor(anchors, event) {
+    const matches = anchors.filter(anchor => anchor.quote === event.quote);
+    if (event.occurrence !== undefined && matches[event.occurrence]) return matches[event.occurrence];
+    const original = anchorIndexOf(event);
+    let nearest = null;
+    matches.forEach(anchor => {
+      if (nearest === null || Math.abs(anchor.index - original) < Math.abs(nearest.index - original)) nearest = anchor;
+    });
+    return nearest;
+  }
+
+  // How many earlier anchors share this anchor's quote — stored on the comment
+  // so a repeated quote can be told apart after edits.
+  function occurrenceOf(anchors, anchor) {
+    return anchors.filter(a => a.quote === anchor.quote && a.index < anchor.index).length;
+  }
+
   // Marks el as commented and shows its comments right after it.
   function attachComments(el, comments) {
     el.classList.add('commented');
@@ -348,10 +367,13 @@
     insertAfter(el, cards);
   }
 
-  function renderDocComments(doc, orphans) {
+  // Orphans are kept as events and looked up here, so their sent status is
+  // current even after a Submit replaced the savedComments entries.
+  function renderDocComments(doc, orphanEvents) {
     const list = $('#doc-comments');
     list.innerHTML = '';
     commentsIn(doc.path, 'doc').forEach(saved => list.appendChild(commentCard(saved)));
+    const orphans = savedComments.filter(saved => orphanEvents.includes(saved.event));
     orphans.forEach(saved => {
       const card = commentCard(saved);
       const note = document.createElement('div');
@@ -390,6 +412,7 @@
     if (view === 'source') anchors = renderSource(pane, source);
     else if (view === 'gherkin') anchors = renderGherkin(pane, source);
     else anchors = renderRendered(pane, id, source);
+    renderedAnchors = anchors;
     currentOrphans = attachCommentCards(doc.path, view, anchors);
     renderHeader(doc, view);
     renderDocComments(doc, currentOrphans);
@@ -559,8 +582,11 @@
     popover = null;
   }
 
-  // anchor: { view, quote, blockIndex? , line? } — copied onto the comment event.
-  function openPopover(el, anchor) {
+  // anchor: { view, quote, blockIndex? , line? } — copied onto the comment event,
+  // plus the quote's occurrence among the anchors on screen.
+  function openPopover(el, clickedAnchor) {
+    const onScreen = renderedAnchors.find(a => a.el === el);
+    const anchor = Object.assign({}, clickedAnchor, { occurrence: occurrenceOf(renderedAnchors, onScreen) });
     closePopover();
     const selection = selectionWithin(el);
     popover = document.createElement('div');
@@ -655,8 +681,7 @@
   handle.addEventListener('lostpointercapture', endSidebarDrag);
   // Re-clamp when the window shrinks so the sidebar never covers the doc.
   window.addEventListener('resize', () => {
-    const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-w'));
-    if (current) applySidebarWidth(current);
+    applySidebarWidth($('#sidebar').getBoundingClientRect().width);
   });
   restoreSidebarWidth();
 

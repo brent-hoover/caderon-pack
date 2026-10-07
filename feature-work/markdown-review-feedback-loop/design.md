@@ -12,10 +12,10 @@ problem: ./problem.md
 
 ## Summary
 
-Comments saved in the browser are recorded but do not wake the agent; the operator ends a batch
-with **Submit comments** or **Approve**. A new `wait-for-feedback.cjs` script, run by the agent with
-Bash `run_in_background`, waits until the session's `events` file holds an unread `submit` or
-`approve` event, prints every unread event, advances a read cursor past them, and exits — which gives
+Comments saved in the browser are recorded but do not wake the agent; the operator ends a doc's
+batch with **Submit comments** or **Approve** on that doc. A new `wait-for-feedback.cjs` script, run
+by the agent with Bash `run_in_background`, waits for a new `submit` or `approve` event, prints it
+with that doc's not-yet-delivered comments, advances a read cursor past it, and exits — which gives
 the idle agent a new turn. The agent re-arms it at the end of every turn unless one is already running. Separately,
 the server rings the agent's cmux surface on submit or approve, if it runs under cmux. Saved
 comments stay visible in the viewer as cards marked pending or sent, rebuilt from `events` on load. In the
@@ -46,9 +46,10 @@ a duplicate (whose immediate exit would itself wake the agent), `--status` runs 
 prints `{"watching":true|false}` without waiting; the agent checks it before arming.
 
 **Read cursor.** `events` is append-only and is never moved, truncated or edited by the watcher or
-the agent. `state/events.cursor` holds the byte offset up to which events have been delivered
-(absent = 0). *Unread events* are the complete lines (terminated by `\n`) between the cursor and the
-end of the file; a trailing partial line is left for the next read. If `events` is shorter than the
+the agent. `state/events.cursor` holds the byte offset just past the last trigger delivered
+(absent = 0); comments before it can still be undelivered if their doc had no trigger yet (rule in
+step 2). Only complete lines (terminated by `\n`) are read; a trailing partial line is left for the
+next read. If `events` is shorter than the
 cursor (truncated by an agent following the pre-1.7 contract), the cursor resets to 0.
 
 **Wait loop**, polling every 250ms:
@@ -68,15 +69,15 @@ cursor (truncated by an agent following the pre-1.7 contract), the cursor resets
    on *d* lies after it. The batch is those comments plus the new triggers, in file order; the cursor
    then moves past the last new trigger. A trigger without `doc` (none are written any more) covers
    every doc.
-3. Else if `state/server-stopped` holds a complete JSON marker → deliver any unread events
-   (every comment not yet delivered, triggered or not), then print
+3. Else if `state/server-stopped` holds a complete JSON marker → deliver every comment not yet
+   delivered, on any doc, triggered or not, then print
    `{"type":"server-stopped","reason":<reason from server-stopped>}`, exit 3. The marker is checked
    *before* events are read (the server appends its last events before writing the marker), and a
    half-written marker counts as "not stopped yet", so feedback sent just before a stop is never
    dropped.
 4. Otherwise keep polling.
 
-**Deliver**: write the unread lines to stdout, then save the new offset by writing
+**Deliver**: write the selected lines to stdout, then save the new cursor by writing
 `events.cursor.tmp` and renaming it over `events.cursor` (atomic). Printing before saving makes
 delivery at-least-once: if the watcher dies between the two, the next watcher re-delivers that batch
 rather than losing it.
@@ -226,9 +227,9 @@ wrapped in try/catch because it can be unavailable, and the default width is use
 
 | Exit | stdout | Meaning |
 |------|--------|---------|
-| 0 | unread events, JSONL (ends with a `submit` or `approve`) | feedback batch |
+| 0 | JSONL: the new `submit`/`approve` events and the not-yet-delivered comments on their docs | feedback batch |
 | 0 (`--status`) | `{"watching":true\|false}` | watcher liveness, no waiting |
-| 3 | unread events (if any), then `{"type":"server-stopped","reason":…}` | session's server stopped, or its dir was removed (`reason: "session-removed"`) |
+| 3 | every not-yet-delivered comment (if any), then `{"type":"server-stopped","reason":…}` | session's server stopped, or its dir was removed (`reason: "session-removed"`) |
 | 4 | `{"type":"already-watching","pid":N}` | another live watcher owns this session |
 | 1 | — (stderr names the failure and input, e.g. `--session-dir is required`, `not an md-review session: <dir>`) | usage error |
 
@@ -239,6 +240,7 @@ wrapped in try/catch because it can be unavailable, and the default width is use
 | `view` | always, by new viewers | `rendered`, `source` or `gherkin`; absent on old events — read as `rendered` |
 | `line` | `view` is `source` (the clicked line) or `gherkin` (the block's `startLine`) | 1-based line number in the source file |
 | `scenario` | `view` is `gherkin` and the block kind is `scenario` | text after the keyword, e.g. `Each corpse's record carries its own reason` |
+| `occurrence` | inline comments from viewers ≥ 1.7 | how many earlier elements on screen had the same `quote` (0 = first); lets the viewer re-attach the card to the right one of several identical blocks after edits |
 | `blockIndex` | `view` is `rendered` or `gherkin` | index of the top-level rendered block (`rendered`) or of the Gherkin block (`gherkin`) |
 
 New event type, sent by the Submit button:
@@ -380,3 +382,6 @@ delivery keep us below Optimal.
   and on cancelled drags.
 - 2026-10-07: Submit is per doc (operator decision): `submit` carries `doc`; delivery, sent status,
   pending count and ring tally are all per doc; the cursor marks the last processed trigger.
+- 2026-10-07: roborev 3873 — Read cursor paragraph aligned with the per-doc delivery rule.
+- 2026-10-07: roborev 3871 — comments carry `occurrence` so cards on repeated quotes re-attach to the
+  right element after edits; nearest-position fallback for older events.
