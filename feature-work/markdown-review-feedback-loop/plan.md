@@ -85,7 +85,9 @@ the operator's surface.
 
 ### 3. `wait-for-feedback.cjs`
 
-**Status:** ☐ (code + tests in 65bba5c, 37/37; manual browser check pending)
+**Status:** ☑ (65bba5c, 37/37). Manual 2026-10-07: browser Approve at 11:39:07.8 → watcher exit 0
+at 11:39:09 with the event on stdout, session re-invoked with no terminal input; cursor = 189 =
+`events` size.
 
 **What:** new `scripts/wait-for-feedback.cjs` (purpose: deliver a session's unread review events to
 the agent once they settle), new `tests/wait-for-feedback.test.cjs`. Tests drive the script as a

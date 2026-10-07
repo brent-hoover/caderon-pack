@@ -142,7 +142,8 @@ function readCursor(session) {
 
 function saveCursor(session, offset) {
   const tmpFile = session.cursorFile + '.tmp';
-  fs.writeFileSync(tmpFile, offset + '\n');
+  // Owner-only, like every other file start-server.sh creates under the session.
+  fs.writeFileSync(tmpFile, offset + '\n', { mode: 0o600 });
   fs.renameSync(tmpFile, session.cursorFile);
 }
 
@@ -166,7 +167,7 @@ function acquireWatcherLock(session) {
   if (ownerPid !== null) fs.rmSync(session.pidFile, { force: true }); // stale: owner died without cleanup
   let fd;
   try {
-    fd = fs.openSync(session.pidFile, 'wx');
+    fd = fs.openSync(session.pidFile, 'wx', 0o600);
   } catch (e) {
     if (e.code !== 'EEXIST') throw e;
     // Another watcher created the file between our check and our create.
