@@ -272,8 +272,8 @@ delivery keep us below Optimal.
   accepted as unlikely within one review.
 - **Assumption: `run_in_background` commands don't expire** — documented as "keeps running across
   turns". Verified 2026-10-07: a 12-minute background command completed and re-invoked the session.
-  Longer reviews are untested; if a watcher is ever killed, the agent's SIGTERM-free re-arm rule
-  still applies at the next turn.
+  Longer reviews are untested; if a watcher is ever killed, the agent's end-of-turn status check
+  re-arms it at the next turn.
 - **Gherkin edge cases** (`Scenario Outline`, `Rule`, `#` inside doc strings, comments between
   scenarios) — covered by `gherkin.cjs` unit tests on fixtures; unknown lines render as `text`.
 - **Trust model** — comment text now starts agent turns without passing through the terminal
