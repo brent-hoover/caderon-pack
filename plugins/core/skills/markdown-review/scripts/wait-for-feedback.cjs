@@ -1,24 +1,30 @@
 #!/usr/bin/env node
-// Deliver a session's unread review events to the agent once the operator
+// Deliver a session's review comments to the agent once the operator
 // submits them.
 //
 // Run by the agent with Bash run_in_background: the script exits when the
-// operator clicks Submit comments or Approve in the browser, and that exit
-// gives the idle agent a new turn. Comments alone never wake the agent —
-// a review produces one every 10-30s, and the operator decides when a batch
-// is finished.
+// operator clicks Submit comments or Approve on a doc in the browser, and that
+// exit gives the idle agent a new turn. Comments alone never wake the agent —
+// a review produces one every 10-30s, and the operator decides when a doc's
+// batch is finished. Submit and Approve are per doc: they deliver only that
+// doc's comments.
 //
 // Usage: wait-for-feedback.cjs --session-dir <dir> [--status]
 //
 // Exit codes:
-//   0  unread events printed as JSONL (or, with --status, {"watching":bool})
-//   3  server stopped or session dir removed: unread events, then a server-stopped line
+//   0  submitted comments and their submit/approve events as JSONL
+//      (or, with --status, {"watching":bool})
+//   3  server stopped or session dir removed: every undelivered comment, then a
+//      server-stopped line
 //   4  another live watcher owns this session
 //   1  usage error
 //
-// state/events is append-only; this script never moves or truncates it. It keeps
-// a byte offset in state/events.cursor and delivers only complete lines past it,
-// so a late or half-written event is picked up on the next run instead of lost.
+// state/events is append-only; this script never moves or truncates it.
+// state/events.cursor is the byte offset just past the last submit/approve
+// delivered. What has been delivered follows from the file and the cursor: a
+// comment was delivered iff a trigger on its doc lies between it and the
+// cursor. Only complete lines are read, so a half-written event is picked up
+// on the next run instead of lost.
 const fs = require('fs');
 const path = require('path');
 
@@ -96,11 +102,15 @@ function pollOnce(session) {
     // Check for a stop before reading events: the server appends its last
     // events before writing server-stopped, so this order cannot miss them.
     const stopReason = readStopReason(session);
-    const unread = readUnreadEvents(session);
-    if (stopReason !== null) return { unread, trailer: stoppedLine(stopReason), exitCode: EXIT_SERVER_STOPPED };
-    const submitted = throughLastTrigger(unread);
-    if (submitted.text) return { unread: submitted, trailer: '', exitCode: EXIT_DELIVERED };
-    return null;
+    const lines = readEventLines(session);
+    const cursor = effectiveCursor(session, lines);
+    if (stopReason !== null) {
+      const batch = selectUndelivered(lines, cursor);
+      return { batch, trailer: stoppedLine(stopReason), exitCode: EXIT_SERVER_STOPPED };
+    }
+    const batch = selectSubmitted(lines, cursor);
+    if (batch.lines.length === 0) return null;
+    return { batch, trailer: '', exitCode: EXIT_DELIVERED };
   } catch (e) {
     // stop-server.sh deletes /tmp sessions; that can land between any two
     // file operations above.
@@ -110,35 +120,88 @@ function pollOnce(session) {
 }
 
 function sessionRemovedOutcome() {
-  return { unread: { text: '', endOffset: 0 }, trailer: stoppedLine('session-removed'), exitCode: EXIT_SERVER_STOPPED };
+  return { batch: { lines: [], cursor: null }, trailer: stoppedLine('session-removed'), exitCode: EXIT_SERVER_STOPPED };
 }
 
 // Print before saving the cursor: a crash in between re-delivers the batch on
 // the next run (at-least-once) instead of losing it.
 function deliver(session, outcome) {
-  process.stdout.write(outcome.unread.text + outcome.trailer, () => {
+  const text = outcome.batch.lines.map(line => line.text).join('');
+  process.stdout.write(text + outcome.trailer, () => {
     if (fs.existsSync(session.stateDir)) {
-      if (outcome.unread.text) saveCursor(session, outcome.unread.endOffset);
+      if (outcome.batch.cursor !== null) saveCursor(session, outcome.batch.cursor);
       releaseWatcherLock(session);
     }
     process.exit(outcome.exitCode);
   });
 }
 
-function readUnreadEvents(session) {
+// New triggers (past the cursor) plus, for each, the comments on its doc that
+// precede it and no earlier trigger covered. Comments on docs without a new
+// trigger keep waiting.
+function selectSubmitted(lines, cursor) {
+  const newTriggers = lines.filter(line => isTrigger(line) && line.endOffset > cursor);
+  if (newTriggers.length === 0) return { lines: [], cursor: null };
+  const selected = lines.filter(line => {
+    if (isTrigger(line)) return line.endOffset > cursor;
+    if (wasDelivered(lines, line, cursor)) return false;
+    return newTriggers.some(trigger => trigger.endOffset > line.endOffset && covers(trigger, line));
+  });
+  return { lines: selected, cursor: newTriggers[newTriggers.length - 1].endOffset };
+}
+
+// On shutdown nothing will trigger again, so every comment not yet delivered
+// goes out, submitted or not.
+function selectUndelivered(lines, cursor) {
+  const selected = lines.filter(line => {
+    if (isTrigger(line)) return line.endOffset > cursor;
+    return !wasDelivered(lines, line, cursor);
+  });
+  const lastLine = lines[lines.length - 1];
+  return { lines: selected, cursor: lastLine ? lastLine.endOffset : null };
+}
+
+function wasDelivered(lines, comment, cursor) {
+  return lines.some(line => isTrigger(line) && line.endOffset > comment.endOffset &&
+    line.endOffset <= cursor && covers(line, comment));
+}
+
+function isTrigger(line) {
+  return TRIGGER_EVENT_TYPES.includes(line.event.type);
+}
+
+// A trigger without a doc (written by earlier viewers) covers every doc.
+function covers(trigger, comment) {
+  return !trigger.event.doc || trigger.event.doc === comment.event.doc;
+}
+
+// Complete lines of state/events with the byte offset where each ends.
+function readEventLines(session) {
   let content;
   try {
     content = fs.readFileSync(session.eventsFile);
   } catch (e) {
-    if (e.code === 'ENOENT') return { text: '', endOffset: 0 };
+    if (e.code === 'ENOENT') return [];
     throw e;
   }
-  let cursor = readCursor(session);
-  // A shorter file means an agent on the pre-cursor contract truncated it.
-  if (cursor > content.length) cursor = 0;
-  const lastNewline = content.lastIndexOf(0x0a);
-  if (lastNewline < cursor) return { text: '', endOffset: cursor };
-  return { text: content.subarray(cursor, lastNewline + 1).toString('utf-8'), endOffset: lastNewline + 1 };
+  const lines = [];
+  let start = 0;
+  let newline = content.indexOf(0x0a, start);
+  while (newline !== -1) {
+    const text = content.subarray(start, newline + 1).toString('utf-8');
+    lines.push({ text, event: JSON.parse(text), endOffset: newline + 1 });
+    start = newline + 1;
+    newline = content.indexOf(0x0a, start);
+  }
+  return lines;
+}
+
+// A cursor past the end means an agent on the pre-cursor contract truncated
+// the file; start over rather than skip what is there now.
+function effectiveCursor(session, lines) {
+  const cursor = readCursor(session);
+  const fileEnd = lines.length > 0 ? lines[lines.length - 1].endOffset : 0;
+  return cursor > fileEnd ? 0 : cursor;
 }
 
 function readCursor(session) {
@@ -156,20 +219,6 @@ function saveCursor(session, offset) {
   // Owner-only, like every other file start-server.sh creates under the session.
   fs.writeFileSync(tmpFile, offset + '\n', { mode: 0o600 });
   fs.renameSync(tmpFile, session.cursorFile);
-}
-
-// The unread events up to and including the last submit/approve. Comments
-// saved after it belong to the next batch, which the operator hasn't sent yet.
-// Returns empty text when there is no trigger.
-function throughLastTrigger(unread) {
-  const lines = unread.text.split('\n').filter(Boolean).map(line => line + '\n');
-  let lastTrigger = -1;
-  lines.forEach((line, i) => {
-    if (TRIGGER_EVENT_TYPES.includes(JSON.parse(line).type)) lastTrigger = i;
-  });
-  const text = lines.slice(0, lastTrigger + 1).join('');
-  const startOffset = unread.endOffset - Buffer.byteLength(unread.text);
-  return { text, endOffset: startOffset + Buffer.byteLength(text) };
 }
 
 // Returns null while the server is running. The server writes server-stopped

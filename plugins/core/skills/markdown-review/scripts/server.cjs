@@ -488,24 +488,26 @@ function handleMessage(text) {
 
 // ========== cmux ring ==========
 
-// Comments are tallied silently; submit or approve — the same events that
-// wake the agent — ring once with the tally.
-let pendingTally = null;
+// Comments are tallied silently per doc; a submit or approve on a doc — the
+// same events that wake the agent — rings once with that doc's tally.
+const pendingCommentsByDoc = new Map(); // doc path -> comment count
 
 function tallyForCmuxRing(event) {
-  if (!pendingTally) pendingTally = { comments: 0, approvals: 0, docs: [] };
-  if (event.type === 'comment') pendingTally.comments++;
-  if (event.type === 'approve') pendingTally.approvals++;
-  if (event.doc) {
-    const docName = path.basename(String(event.doc));
-    if (!pendingTally.docs.includes(docName)) pendingTally.docs.push(docName);
+  if (event.type === 'comment') {
+    pendingCommentsByDoc.set(event.doc, (pendingCommentsByDoc.get(event.doc) || 0) + 1);
+    return;
   }
-  if (event.type !== 'comment') ringCmuxSurface();
+  const comments = pendingCommentsByDoc.get(event.doc) || 0;
+  pendingCommentsByDoc.delete(event.doc);
+  ringCmuxSurface({
+    comments: comments,
+    approvals: event.type === 'approve' ? 1 : 0,
+    docs: [path.basename(String(event.doc))]
+  });
 }
 
-function ringCmuxSurface() {
-  const body = describeTally(pendingTally);
-  pendingTally = null;
+function ringCmuxSurface(tally) {
+  const body = describeTally(tally);
   // execFile, not exec: the body carries doc names sent by the browser.
   // --desktop false: pane ring + sidebar badge without a macOS banner.
   const args = ['notify', '--surface', CMUX_SURFACE_ID, '--title', 'Review feedback',

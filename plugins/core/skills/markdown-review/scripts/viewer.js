@@ -17,7 +17,8 @@
   let currentPath = null;         // path of the doc currentId refers to
   const textCache = new Map();    // path -> doc source
   // Every comment saved this session, in order: [{event, isSent}]. Rebuilt from
-  // GET /events on load; a comment is sent once a submit or approve follows it.
+  // GET /events on load; a comment is sent once a submit or approve on its own
+  // doc follows it.
   let savedComments = [];
   let currentOrphans = [];        // comments of the current doc/view whose text is gone
   const viewChoice = new Map();   // path -> view the operator toggled to (in-memory; resets on reload)
@@ -264,13 +265,17 @@
     savedComments = [];
     events.forEach(event => {
       if (event.type === 'comment') savedComments.push({ event: event, isSent: false });
-      else if (TRIGGER_EVENT_TYPES.includes(event.type)) markAllSent();
+      else if (TRIGGER_EVENT_TYPES.includes(event.type)) markDocSent(event.doc);
     });
     renderSubmitButton();
   }
 
-  function markAllSent() {
-    savedComments = savedComments.map(saved => ({ event: saved.event, isSent: true }));
+  // A trigger without a doc (written by earlier viewers) covered every doc.
+  function markDocSent(docPath) {
+    savedComments = savedComments.map(saved => {
+      const isCovered = !docPath || saved.event.doc === docPath;
+      return { event: saved.event, isSent: saved.isSent || isCovered };
+    });
   }
 
   // Doc-level comments have scope 'doc'; events from pre-view viewers are 'rendered'.
@@ -305,8 +310,10 @@
     return orphans;
   }
 
+  // Submit is per doc: it counts and sends only the current doc's comments.
   function renderSubmitButton() {
-    const pendingCount = savedComments.filter(saved => !saved.isSent).length;
+    const docPath = currentId === null ? null : docs[currentId].path;
+    const pendingCount = savedComments.filter(saved => !saved.isSent && saved.event.doc === docPath).length;
     const btn = $('#submit-comments');
     btn.textContent = 'Submit comments (' + pendingCount + ')';
     btn.disabled = pendingCount === 0;
@@ -526,6 +533,7 @@
     const btn = $('#approve');
     btn.textContent = isApproved ? 'Approved ✓' : 'Approve';
     btn.classList.toggle('approved', isApproved);
+    renderSubmitButton();
     const toggle = $('#view-toggle');
     toggle.hidden = !TOGGLEABLE_EXTENSIONS.includes(extensionOf(doc.path));
     toggle.textContent = view === 'source' ? 'Rendered' : 'Source';
@@ -680,6 +688,8 @@
     flash(SAVED_TOAST);
   }
 
+  // Only the current doc's cards are on the page, so Submit/Approve on it can
+  // flip every pending badge shown.
   function showAllCardsSent() {
     document.querySelectorAll('.comment-card .badge.pending').forEach(badge => {
       badge.className = 'badge sent';
@@ -696,8 +706,10 @@
   };
 
   $('#submit-comments').onclick = () => {
-    sendEvent({ type: 'submit' });
-    markAllSent();
+    if (currentId === null) return;
+    const docPath = docs[currentId].path;
+    sendEvent({ type: 'submit', doc: docPath });
+    markDocSent(docPath);
     renderSubmitButton();
     showAllCardsSent();
     flash('Comments sent to the agent');
@@ -715,7 +727,7 @@
     if (currentId === null) return;
     const doc = docs[currentId];
     sendEvent({ type: 'approve', doc: doc.path });
-    markAllSent();
+    markDocSent(doc.path);
     renderSubmitButton();
     showAllCardsSent();
     approved.set(doc.path, doc.mtime);

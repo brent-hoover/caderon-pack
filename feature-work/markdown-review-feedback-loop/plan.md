@@ -356,7 +356,9 @@ dir); `node --test tests/` green.
 
 ### 13. Per-doc Submit
 
-**Status:** ☐
+**Status:** ☑ — 3 new tests failed first, then 57/57. Chromium: 3 comments on A → A `(3)`, B `(0)`;
+comment on B → `(1)`; Submit on A flips only A's cards; survives reload. Watcher on that session
+delivered A's 3 comments + A's submit only.
 
 **What:** watcher delivery rule, viewer count/Submit/sent status, server ring tally — all per doc
 (design §1 step 2, §2, §3).

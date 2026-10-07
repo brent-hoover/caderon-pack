@@ -277,3 +277,35 @@ test('Given comment A, approve, comment B, when delivered, then B waits for the 
   const run = await second.exited;
   assert.strictEqual(run.stdout, eventLine('B') + SUBMIT);
 });
+
+function commentOn(doc, comment) {
+  return JSON.stringify({ type: 'comment', doc, scope: 'doc', comment }) + '\n';
+}
+
+function submitOn(doc) {
+  return JSON.stringify({ type: 'submit', doc, timestamp: 1 }) + '\n';
+}
+
+test('Given comments on two docs, when one doc is submitted, then only that doc\'s comments are delivered', async () => {
+  const s = makeSession();
+  fs.writeFileSync(s.eventsFile, commentOn('/d/x.md', 'x1') + commentOn('/d/y.md', 'y1') + commentOn('/d/x.md', 'x2') + submitOn('/d/x.md'));
+  const first = await startWatcher(['--session-dir', s.sessionDir]).exited;
+  assert.strictEqual(first.stdout, commentOn('/d/x.md', 'x1') + commentOn('/d/x.md', 'x2') + submitOn('/d/x.md'));
+
+  const waiting = startWatcher(['--session-dir', s.sessionDir]);
+  await sleep(1000);
+  assert.ok(waiting.isRunning(), 'y.md comment delivered without its own submit');
+  fs.appendFileSync(s.eventsFile, submitOn('/d/y.md'));
+  const second = await waiting.exited;
+  assert.strictEqual(second.stdout, commentOn('/d/y.md', 'y1') + submitOn('/d/y.md'));
+});
+
+test('Given an undelivered comment on another doc, when the server stops, then it is delivered', async () => {
+  const s = makeSession();
+  fs.writeFileSync(s.eventsFile, commentOn('/d/x.md', 'x1') + commentOn('/d/y.md', 'y1') + submitOn('/d/x.md'));
+  await startWatcher(['--session-dir', s.sessionDir]).exited;
+  fs.writeFileSync(path.join(s.stateDir, 'server-stopped'), JSON.stringify({ reason: 'signal' }) + '\n');
+  const run = await startWatcher(['--session-dir', s.sessionDir]).exited;
+  assert.strictEqual(run.code, 3);
+  assert.strictEqual(run.stdout, commentOn('/d/y.md', 'y1') + '{"type":"server-stopped","reason":"signal"}\n');
+});

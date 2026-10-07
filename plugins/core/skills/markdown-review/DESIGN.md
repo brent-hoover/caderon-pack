@@ -93,7 +93,7 @@ Single dark/light page (`prefers-color-scheme`), GitHub-ish typography.
   a card after the element it comments on (doc-level ones above the footer
   box), badged *pending* or *sent*; cards are rebuilt from `GET /events` on
   load. Comments don't wake the agent: **Submit comments (N)** in the header
-  sends a `submit` event for everything pending.
+  sends a `submit` event for the current doc's pending comments (per doc).
 - **Approve**: per-doc button; click emits an approve event (which also sends
   pending comments) and marks the doc
   approved (checkmark in sidebar and pane header). Approval is per doc
@@ -110,9 +110,11 @@ server, the watcher, or the agent — and events are keyed to docs by path so
 they survive manifest reordering.
 
 `wait-for-feedback.cjs --session-dir <dir>` (run by the agent in the
-background) keeps a byte offset in `state/events.cursor`, waits until the
-unread lines include a `submit` or `approve` event, prints all unread lines,
-advances the cursor, and exits — waking the agent. Comments alone never wake
+background) keeps a byte offset in `state/events.cursor` (just past the last
+trigger delivered), waits for a new `submit` or `approve` event, prints it with
+the comments on its doc that no earlier trigger covered, advances the cursor,
+and exits — waking the agent. Comments on other docs wait for their own
+trigger. Comments alone never wake
 it (a review produces one every 10–30s; the user decides when a batch is
 done). One watcher per session
 (`state/watcher.pid`; `--status` reports liveness; exit 4 if one is already
@@ -121,7 +123,7 @@ delivering anything pending, submitted or not. Delivery is at-least-once.
 
 If `CMUX_SURFACE_ID` is set, the server also runs one
 `cmux notify --surface … --desktop false` per submit or approve, summarising
-the comments since the last one
+that doc's comments since its last one
 (`MDREVIEW_CMUX_BIN` overrides the binary for tests).
 
 ```jsonl
@@ -130,7 +132,7 @@ the comments since the last one
 {"type":"comment","doc":"/abs/path/a.feature","view":"gherkin","blockIndex":3,"line":28,"scenario":"…","quote":"Scenario: …","selection":null,"comment":"…","timestamp":1234567890}
 {"type":"comment","doc":"/abs/path/plan.md","scope":"doc","comment":"…","timestamp":1234567890}
 {"type":"approve","doc":"/abs/path/plan.md","timestamp":1234567890}
-{"type":"submit","timestamp":1234567890}
+{"type":"submit","doc":"/abs/path/plan.md","timestamp":1234567890}
 ```
 
 An approve event only counts if no later edit touched the doc: the agent

@@ -237,21 +237,25 @@ async function waitForCall(callsFile, sinceMs) {
   return readCalls(callsFile);
 }
 
-test('Given cmux, when three comments are submitted, then one ring summarises them within 1s', async () => {
+test('Given comments on two docs, when one doc is submitted, then its ring counts only that doc', async () => {
   const ring = startRingServer({ CMUX_SURFACE_ID: 'test-surface' });
   try {
     const info = await waitForStart(ring.p);
     const send = (e) => sendReviewEvent(info.port, ring.token, e);
     await send({ type: 'comment', doc: '/d/a.md', blockIndex: 1, quote: 'q', comment: 'one' });
-    await send({ type: 'comment', doc: '/d/a.md', blockIndex: 2, quote: 'q', comment: 'two' });
-    await send({ type: 'comment', doc: '/d/b.md', scope: 'doc', comment: 'three' });
+    await send({ type: 'comment', doc: '/d/b.md', scope: 'doc', comment: 'two' });
+    await send({ type: 'comment', doc: '/d/a.md', blockIndex: 2, quote: 'q', comment: 'three' });
     await sleep(2500);
     assert.deepStrictEqual(readCalls(ring.callsFile), [], 'rang before submit');
     const submittedAt = Date.now();
-    await send({ type: 'submit' });
+    await send({ type: 'submit', doc: '/d/a.md' });
     assert.deepStrictEqual(await waitForCall(ring.callsFile, submittedAt), [
-      'notify --surface test-surface --title Review feedback --body 3 comments on a.md, b.md --desktop false'
+      'notify --surface test-surface --title Review feedback --body 2 comments on a.md --desktop false'
     ]);
+    await send({ type: 'submit', doc: '/d/b.md' });
+    await sleep(500);
+    assert.strictEqual(readCalls(ring.callsFile)[1],
+      'notify --surface test-surface --title Review feedback --body 1 comment on b.md --desktop false');
   } finally { ring.p.kill(); }
 });
 
@@ -272,7 +276,7 @@ test('Given no CMUX_SURFACE_ID, when comments are submitted, then cmux is never 
   try {
     const info = await waitForStart(ring.p);
     await sendReviewEvent(info.port, ring.token, { type: 'comment', doc: '/d/a.md', scope: 'doc', comment: 'x' });
-    await sendReviewEvent(info.port, ring.token, { type: 'submit' });
+    await sendReviewEvent(info.port, ring.token, { type: 'submit', doc: '/d/a.md' });
     await sleep(NO_RING_WAIT_MS);
     assert.deepStrictEqual(readCalls(ring.callsFile), []);
   } finally { ring.p.kill(); }
@@ -283,7 +287,7 @@ test('Given the cmux call fails, when comments are submitted, then the failure i
   try {
     const info = await waitForStart(ring.p);
     await sendReviewEvent(info.port, ring.token, { type: 'comment', doc: '/d/a.md', scope: 'doc', comment: 'kept' });
-    await sendReviewEvent(info.port, ring.token, { type: 'submit' });
+    await sendReviewEvent(info.port, ring.token, { type: 'submit', doc: '/d/a.md' });
     await sleep(RING_WAIT_MS);
     assert.match(ring.stdout(), /"type":"cmux-notify-failed"/);
     assert.match(fs.readFileSync(path.join(ring.stateDir, 'events'), 'utf-8'), /kept/);
