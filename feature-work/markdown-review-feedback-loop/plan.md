@@ -141,7 +141,7 @@ Step 7's SKILL.md contract then adds "exit 5 → re-arm" and design.md's Interfa
 
 ### 4. `gherkin.cjs` parser
 
-**Status:** ☐
+**Status:** ☑ (44/44; added a test that a doc string closes only on its own fence)
 
 **What:** new `scripts/gherkin.cjs` (purpose: split Gherkin source into commentable blocks of typed
 lines), new `tests/gherkin.test.cjs`, fixture `tests/fixtures/sample.feature`: preamble comments
