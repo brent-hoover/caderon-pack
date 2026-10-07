@@ -271,7 +271,10 @@ delivery keep us below Optimal.
   it stays past the cursor and is delivered on the next wake. Tested by writing a line in two halves
   around a watcher run.
 - **Throwaway sessions** — feedback sent within the quiet window before `stop-server.sh` deletes a
-  `/tmp` session dir is lost with the dir. Accepted: `/tmp` sessions are throwaway by design.
+  `/tmp` session dir is lost with the dir; a deletion while the watcher is saving its cursor (after
+  printing) exits 0 or 1 instead of 3. Accepted: `/tmp` sessions are throwaway, and this is a
+  single-user tool — the operator accepts multi-process race edge cases (2026-10-07, roborev
+  job 3858).
 - **Agent forgets to re-arm** — the next batch is not acted on until the operator types (today's
   behavior). Mitigated by making status-check-then-arm an explicit end-of-turn step in `SKILL.md`;
   the cmux ring still alerts the operator.
