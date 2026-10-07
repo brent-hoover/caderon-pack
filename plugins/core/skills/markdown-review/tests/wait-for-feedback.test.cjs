@@ -1,0 +1,226 @@
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const WATCHER = path.join(__dirname, '..', 'scripts', 'wait-for-feedback.cjs');
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+function makeSession() {
+  const sessionDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-watch-'));
+  const stateDir = path.join(sessionDir, 'state');
+  fs.mkdirSync(stateDir);
+  return { sessionDir, stateDir, eventsFile: path.join(stateDir, 'events') };
+}
+
+function eventLine(comment) {
+  return JSON.stringify({ type: 'comment', doc: '/d/a.md', scope: 'doc', comment }) + '\n';
+}
+
+function startWatcher(args) {
+  const startedAt = Date.now();
+  const child = spawn('node', [WATCHER, ...args]);
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (d) => { stdout += d.toString(); });
+  child.stderr.on('data', (d) => { stderr += d.toString(); });
+  const exited = new Promise((resolve) => {
+    child.on('exit', (code, signal) => resolve({ code, signal, stdout, stderr, elapsedMs: Date.now() - startedAt }));
+  });
+  return { child, exited, isRunning: () => child.exitCode === null && child.signalCode === null };
+}
+
+async function waitForPidFile(stateDir) {
+  const pidFile = path.join(stateDir, 'watcher.pid');
+  for (let i = 0; i < 40 && !fs.existsSync(pidFile); i++) await sleep(50);
+  return Number(fs.readFileSync(pidFile, 'utf-8').trim());
+}
+
+test('Given no --session-dir, when run, then it exits 1 naming the missing flag', async () => {
+  const run = await startWatcher([]).exited;
+  assert.strictEqual(run.code, 1);
+  assert.match(run.stderr, /--session-dir is required/);
+});
+
+test('Given a dir without state/, when run, then it exits 1 naming the dir', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-notsession-'));
+  const run = await startWatcher(['--session-dir', dir]).exited;
+  assert.strictEqual(run.code, 1);
+  assert.ok(run.stderr.includes('not an md-review session: ' + dir));
+});
+
+test('Given events that went quiet, when the watcher runs, then it delivers them and advances the cursor', async () => {
+  const s = makeSession();
+  fs.writeFileSync(s.eventsFile, eventLine('one') + eventLine('two'));
+  const run = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '300']).exited;
+  assert.strictEqual(run.code, 0);
+  assert.strictEqual(run.stdout, eventLine('one') + eventLine('two'));
+  assert.strictEqual(fs.readFileSync(s.eventsFile, 'utf-8'), eventLine('one') + eventLine('two'));
+  assert.strictEqual(fs.readFileSync(path.join(s.stateDir, 'events.cursor'), 'utf-8').trim(),
+    String(fs.statSync(s.eventsFile).size));
+});
+
+test('Given a delivered batch, when more events arrive, then the next run delivers only the new ones', async () => {
+  const s = makeSession();
+  fs.writeFileSync(s.eventsFile, eventLine('old'));
+  await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
+  fs.appendFileSync(s.eventsFile, eventLine('new'));
+  const run = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
+  assert.strictEqual(run.stdout, eventLine('new'));
+});
+
+test('Given the cursor is at the end, when nothing new arrives, then the watcher keeps waiting', async () => {
+  const s = makeSession();
+  fs.writeFileSync(s.eventsFile, eventLine('old'));
+  await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
+  const w = startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']);
+  await sleep(1500);
+  assert.ok(w.isRunning(), 'watcher re-delivered already-read events');
+  w.child.kill('SIGTERM');
+  await w.exited;
+});
+
+test('Given events shorter than the cursor, when the watcher runs, then it resets and delivers all lines', async () => {
+  const s = makeSession();
+  fs.writeFileSync(s.eventsFile, eventLine('after-truncate'));
+  fs.writeFileSync(path.join(s.stateDir, 'events.cursor'), '999999\n');
+  const run = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
+  assert.strictEqual(run.stdout, eventLine('after-truncate'));
+});
+
+test('Given --quiet-ms 500, when an event is written, then it is delivered 0.5s–1.2s later', async () => {
+  const s = makeSession();
+  const w = startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '500']);
+  await waitForPidFile(s.stateDir);
+  const writtenAt = Date.now();
+  fs.writeFileSync(s.eventsFile, eventLine('timed'));
+  await w.exited;
+  const delayMs = Date.now() - writtenAt;
+  assert.ok(delayMs >= 500 && delayMs <= 1200, 'delivered after ' + delayMs + 'ms');
+});
+
+test('Given events every 500ms for 3s, when watching, then one batch arrives ≥2s after the last', async () => {
+  const s = makeSession();
+  const w = startWatcher(['--session-dir', s.sessionDir]);
+  await waitForPidFile(s.stateDir);
+  let lastWriteAt = 0;
+  for (let i = 0; i < 6; i++) {
+    fs.appendFileSync(s.eventsFile, eventLine('burst-' + i));
+    lastWriteAt = Date.now();
+    await sleep(500);
+    assert.ok(w.isRunning(), 'delivered mid-burst after write ' + i);
+  }
+  const run = await w.exited;
+  assert.ok(Date.now() - lastWriteAt >= 2000);
+  assert.strictEqual(run.stdout.trim().split('\n').length, 6);
+});
+
+test('Given no events, when watching for 3s, then it is still waiting', async () => {
+  const s = makeSession();
+  const w = startWatcher(['--session-dir', s.sessionDir]);
+  await sleep(3000);
+  assert.ok(w.isRunning());
+  w.child.kill('SIGTERM');
+  await w.exited;
+});
+
+test('Given the server stopped with events inside the quiet window, then they are delivered before exit 3', async () => {
+  const s = makeSession();
+  fs.writeFileSync(s.eventsFile, eventLine('last-words'));
+  fs.writeFileSync(path.join(s.stateDir, 'server-stopped'), JSON.stringify({ reason: 'signal', timestamp: 1 }) + '\n');
+  const run = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '60000']).exited;
+  assert.strictEqual(run.code, 3);
+  assert.strictEqual(run.stdout, eventLine('last-words') + '{"type":"server-stopped","reason":"signal"}\n');
+});
+
+test('Given the server stopped with no events, then only the stopped line is printed', async () => {
+  const s = makeSession();
+  fs.writeFileSync(path.join(s.stateDir, 'server-stopped'), JSON.stringify({ reason: 'idle timeout', timestamp: 1 }) + '\n');
+  const run = await startWatcher(['--session-dir', s.sessionDir]).exited;
+  assert.strictEqual(run.code, 3);
+  assert.strictEqual(run.stdout, '{"type":"server-stopped","reason":"idle timeout"}\n');
+});
+
+test('Given the session dir is deleted while waiting, then it exits 3 with session-removed', async () => {
+  const s = makeSession();
+  const w = startWatcher(['--session-dir', s.sessionDir]);
+  await waitForPidFile(s.stateDir);
+  fs.rmSync(s.sessionDir, { recursive: true, force: true });
+  const run = await w.exited;
+  assert.strictEqual(run.code, 3);
+  assert.strictEqual(run.stdout, '{"type":"server-stopped","reason":"session-removed"}\n');
+});
+
+test('Given a live watcher, when a second starts, then it exits 4 and leaves the first one\'s pid file', async () => {
+  const s = makeSession();
+  const first = startWatcher(['--session-dir', s.sessionDir]);
+  const firstPid = await waitForPidFile(s.stateDir);
+  const second = await startWatcher(['--session-dir', s.sessionDir]).exited;
+  assert.strictEqual(second.code, 4);
+  assert.strictEqual(second.stdout, JSON.stringify({ type: 'already-watching', pid: firstPid }) + '\n');
+  assert.strictEqual(fs.readFileSync(path.join(s.stateDir, 'watcher.pid'), 'utf-8').trim(), String(firstPid));
+  first.child.kill('SIGTERM');
+  await first.exited;
+});
+
+test('Given a pid file naming a dead process, when a watcher starts, then it takes over the lock', async () => {
+  const s = makeSession();
+  const deadPid = 2 ** 22 + 12345; // above macOS/Linux default pid_max, so never alive
+  fs.writeFileSync(path.join(s.stateDir, 'watcher.pid'), String(deadPid));
+  const w = startWatcher(['--session-dir', s.sessionDir]);
+  await sleep(500);
+  assert.ok(w.isRunning());
+  assert.strictEqual(fs.readFileSync(path.join(s.stateDir, 'watcher.pid'), 'utf-8').trim(), String(w.child.pid));
+  w.child.kill('SIGTERM');
+  await w.exited;
+});
+
+test('Given --status, then it reports watcher liveness immediately', async () => {
+  const s = makeSession();
+  const idle = await startWatcher(['--session-dir', s.sessionDir, '--status']).exited;
+  assert.strictEqual(idle.code, 0);
+  assert.strictEqual(idle.stdout, '{"watching":false}\n');
+
+  const w = startWatcher(['--session-dir', s.sessionDir]);
+  await waitForPidFile(s.stateDir);
+  const busy = await startWatcher(['--session-dir', s.sessionDir, '--status']).exited;
+  assert.strictEqual(busy.stdout, '{"watching":true}\n');
+  w.child.kill('SIGTERM');
+  await w.exited;
+});
+
+test('Given a watcher, when it exits 0, exits 3 or gets SIGTERM, then its pid file is removed', async () => {
+  const pidFileGone = (s) => !fs.existsSync(path.join(s.stateDir, 'watcher.pid'));
+
+  const delivered = makeSession();
+  fs.writeFileSync(delivered.eventsFile, eventLine('x'));
+  assert.strictEqual((await startWatcher(['--session-dir', delivered.sessionDir, '--quiet-ms', '200']).exited).code, 0);
+  assert.ok(pidFileGone(delivered), 'pid file left after exit 0');
+
+  const stopped = makeSession();
+  fs.writeFileSync(path.join(stopped.stateDir, 'server-stopped'), '{"reason":"signal"}\n');
+  assert.strictEqual((await startWatcher(['--session-dir', stopped.sessionDir]).exited).code, 3);
+  assert.ok(pidFileGone(stopped), 'pid file left after exit 3');
+
+  const killed = makeSession();
+  const w = startWatcher(['--session-dir', killed.sessionDir]);
+  await waitForPidFile(killed.stateDir);
+  w.child.kill('SIGTERM');
+  await w.exited;
+  assert.ok(pidFileGone(killed), 'pid file left after SIGTERM');
+});
+
+test('Given a half-written line, when the watcher runs, then it delivers only complete lines and the rest later', async () => {
+  const s = makeSession();
+  const partial = eventLine('partial');
+  const half = Math.floor(partial.length / 2);
+  fs.writeFileSync(s.eventsFile, eventLine('complete') + partial.slice(0, half));
+  const first = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
+  assert.strictEqual(first.stdout, eventLine('complete'));
+
+  fs.appendFileSync(s.eventsFile, partial.slice(half));
+  const second = await startWatcher(['--session-dir', s.sessionDir, '--quiet-ms', '200']).exited;
+  assert.strictEqual(second.stdout, partial);
+});
