@@ -1,14 +1,20 @@
 ---
 name: markdown-review
-description: Use when you have authored markdown documents (plans, designs, reports, analyses) that the user should read and give feedback on. Serves rendered docs to the user's browser with a multi-doc sidebar, live reload on edits, per-block inline comments, and an Approve button — instead of making the user read raw markdown in the worktree. Trigger phrases include "show me the doc", "let me review the plan", "render the report", "open it in the browser".
+description: Use when you have authored documents (markdown plans, designs, reports, analyses; Gherkin .feature files; other text files) that the user should read and give feedback on. Serves them to the user's browser — markdown rendered, .feature files as Gherkin, anything else as numbered source — with a multi-doc sidebar, live reload on edits, inline comments, and an Approve button; browser feedback wakes you automatically. Use instead of making the user read raw files in the worktree. Trigger phrases include "show me the doc", "let me review the plan", "render the report", "open it in the browser".
 ---
 
 # Markdown Review
 
-Serve agent-authored markdown to the user's browser for reading and feedback.
+Serve agent-authored docs to the user's browser for reading and feedback.
 Docs are served from their real paths — edit them in place and the browser
 live-reloads. User feedback (inline comments, doc-level comments, approvals)
-lands in a JSONL events file you read on your next turn.
+lands in a JSONL events file; a background watcher wakes you when it arrives.
+
+How each doc is shown, by extension:
+- `.md` / `.markdown` — rendered; the user can toggle to Source.
+- `.feature` — Gherkin blocks (Feature, Background, Rule, each Scenario); the
+  user can toggle to Source.
+- anything else — numbered source lines.
 
 Commands below use `$SKILL_DIR` for this skill's base directory (shown as
 "Base directory for this skill" when the skill loads).
@@ -53,24 +59,56 @@ node "$SKILL_DIR"/scripts/serve-doc.cjs --session-dir <session_dir> path/to/doc.
 ## The review loop
 
 1. Add or edit docs (edit in place — the browser live-reloads).
-2. Tell the user what's ready, share the URL, ask them to review in the
-   browser and reply in the terminal. End your turn.
-3. Next turn: read `<state_dir>/events` (JSONL). Merge with the user's
-   terminal message — the terminal is primary. Then **truncate the events
-   file** (`: > events`) so the next read starts clean; the server never
-   clears it.
-4. Apply feedback by editing the docs in place; iterate.
+2. Tell the user what's ready and share the URL.
+3. **Arm the watcher**, then end your turn:
+   ```bash
+   node "$SKILL_DIR"/scripts/wait-for-feedback.cjs --session-dir <session_dir> --status
+   # {"watching":false} -> arm it; {"watching":true} -> one is already running, skip
+   node "$SKILL_DIR"/scripts/wait-for-feedback.cjs --session-dir <session_dir>
+   # ^ run this one with Bash run_in_background
+   ```
+   The watcher exits once feedback has been quiet for 2s, which gives you a
+   new turn with no terminal input. If you run inside cmux, the server also
+   rings your cmux pane when feedback arrives.
+4. When it exits, act on its output (below), merged with anything the user
+   typed in the terminal — the terminal is primary. Apply feedback by editing
+   docs in place.
+5. **Before ending every turn while the review is open, repeat step 3**
+   (status check, then arm if not watching).
+
+Never edit or truncate `<state_dir>/events` or `events.cursor`: `events` is
+the session's append-only feedback history and the watcher tracks what you
+have already been given. To re-read past feedback, read `events` directly.
+
+### Watcher exit codes
+
+| Exit | Output | What to do |
+|------|--------|------------|
+| 0 | new events, JSONL | Act on them, then re-arm. |
+| 3 | new events (if any), then `{"type":"server-stopped","reason":…}` | Act on the events. Do **not** restart or re-arm in response: `idle timeout` / `owner process exited` mean the review was abandoned (tell the user); `signal` / `session-removed` mean it was stopped on purpose. Restart later only if you need to show docs again (see Health check). |
+| 4 | `{"type":"already-watching","pid":N}` | Nothing — a watcher is already running. |
+| 1 | error on stderr | Fix the command (e.g. wrong `--session-dir`). |
+
+Only ever pass your own `session_dir`; a watcher on another agent's session
+consumes that agent's feedback. A restarted server gets a **new**
+`session_dir` — arm the watcher with the one from the restart output.
 
 ### Event format
 
 ```jsonl
-{"type":"comment","doc":"/abs/path/plan.md","blockIndex":12,"quote":"first ~120 chars of the block","selection":"selected text or null","comment":"…","timestamp":1706000101000}
+{"type":"comment","doc":"/abs/path/plan.md","view":"rendered","blockIndex":12,"quote":"first ~120 chars of the block","selection":"selected text or null","comment":"…","timestamp":1706000101000}
+{"type":"comment","doc":"/abs/path/plan.md","view":"source","line":42,"quote":"text of that line","selection":null,"comment":"…","timestamp":1706000101500}
+{"type":"comment","doc":"/abs/path/a.feature","view":"gherkin","blockIndex":3,"line":28,"scenario":"Scenario name","quote":"Scenario: Scenario name","selection":null,"comment":"…","timestamp":1706000101800}
 {"type":"comment","doc":"/abs/path/plan.md","scope":"doc","comment":"overall feedback","timestamp":1706000102000}
 {"type":"approve","doc":"/abs/path/plan.md","timestamp":1706000103000}
 ```
 
-Locate inline comments by grepping the `quote` text in the doc source
-(`blockIndex` is a fallback — it counts top-level rendered blocks).
+Locate an inline comment by `line` when present (1-based source line; for
+Gherkin, the scenario/block header line), else by grepping `quote` in the
+source, else by `blockIndex` (top-level rendered block for `rendered`, Gherkin
+block for `gherkin`). Events without `view` come from older viewers — treat
+them as `rendered`. Delivery is at-least-once: rarely, an event may be
+delivered twice.
 
 An `approve` event means the user signed off on that doc — but only if you
 have not edited the doc after the approval's timestamp and no comments on it
@@ -82,7 +120,9 @@ after approval, the approval is stale; ask again.
 The server may have idle-timed out (default 4h). Check:
 `<state_dir>/server-info` exists AND `<state_dir>/server-stopped` does not.
 If it's down, restart with the same `--project-dir` — same port, the user's
-open tab reconnects on its own; no need to re-share the URL.
+open tab reconnects on its own; no need to re-share the URL. The restart
+creates a **new** `session_dir`: re-add the docs with `serve-doc.cjs` and arm
+the watcher on the new `session_dir`.
 
 ## Cleaning up
 

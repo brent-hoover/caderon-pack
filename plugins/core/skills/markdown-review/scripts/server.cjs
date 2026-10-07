@@ -458,8 +458,8 @@ function handleMessage(text) {
   }
   touchActivity();
   console.log(JSON.stringify({ source: 'user-event', ...event }));
-  // Persist review events. Unlike the fork, the events file is NEVER cleared
-  // by the server — the agent truncates it after reading.
+  // Persist review events. Unlike the fork, the events file is append-only:
+  // nothing clears it; wait-for-feedback.cjs tracks a read cursor into it.
   if (event && (event.type === 'comment' || event.type === 'approve')) {
     fs.appendFileSync(path.join(STATE_DIR, 'events'), JSON.stringify(event) + '\n');
     if (CMUX_SURFACE_ID) scheduleCmuxRing(event);

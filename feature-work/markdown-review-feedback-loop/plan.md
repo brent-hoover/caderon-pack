@@ -246,7 +246,9 @@ init script, reload — the page loads at 260px with no console error from the v
 
 ### 7. Docs and version
 
-**Status:** ☐
+**Status:** ☑ — SKILL.md re-read end to end (fixed restart guidance vs exit 3); `rg truncat` only
+finds "never truncate" / legacy-handling text; `sync-plugin-metadata.py --check --base-ref develop`
+exit 0; 46/46.
 
 **What:** `SKILL.md` (review loop per design §5 — plus exit 5 if step 3b ran — event fields,
 description mentions `.feature` / non-markdown), skill `DESIGN.md` (feedback events, agent workflow,

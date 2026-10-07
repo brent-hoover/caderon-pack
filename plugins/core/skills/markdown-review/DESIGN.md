@@ -1,6 +1,8 @@
 # markdown-review skill — design
 
-2026-07-07. Status: approved (pending spec review).
+2026-07-07. Status: approved (pending spec review). Updated 2026-10-07 for the
+feedback watcher, per-file-type views and resizable sidebar — rationale in
+`feature-work/markdown-review-feedback-loop/design.md` at the repo root.
 
 ## Purpose
 
@@ -24,6 +26,8 @@ solves auth, live-reload, browser events, and lifecycle.
     start-server.sh      # launcher; prints startup JSON
     stop-server.sh
     serve-doc.cjs        # register doc paths with a running session
+    wait-for-feedback.cjs # deliver unread events to the agent once they settle
+    gherkin.cjs          # split .feature source into commentable blocks
     viewer.html          # full-page viewer: sidebar + doc pane + comment UI
     viewer.js            # client logic (injected into viewer.html at serve time)
     marked.min.js        # vendored markdown renderer, served locally
@@ -51,7 +55,7 @@ All routes behind the fork's session-key auth (`?key=` or cookie,
 constant-time compare) and security headers, unchanged.
 
 - `GET /?key=…` — bootstrap page (unchanged from fork)
-- `GET /` — `viewer.html` with `viewer.js` + `marked.min.js` inlined
+- `GET /` — `viewer.html` with `viewer.js` + `marked.min.js` + `gherkin.cjs` inlined
 - `GET /docs` — `[{ "id": 0, "path": "/abs/path/plan.md", "mtime": … }, …]`
 - `GET /doc/<id>` — raw markdown body of manifest entry `id`
 - `GET /asset/<id>/<relpath>` — asset referenced by doc `id`; resolved against
@@ -67,8 +71,16 @@ Single dark/light page (`prefers-color-scheme`), GitHub-ish typography.
 
 - **Sidebar**: doc list; click to switch; a dot marks docs updated since last
   viewed. Newest-added doc auto-selected on first load and when a new doc
-  appears while the user is on the waiting screen.
-- **Doc pane**: `marked.parse()` of the raw markdown. Relative image `src`s
+  appears while the user is on the waiting screen. Titles: first `# ` heading
+  (markdown), `Feature:` name (`.feature`), else the file name; hover shows
+  the absolute path. Drag handle on the right edge resizes it (180px–50% of
+  the window, remembered in `localStorage`).
+- **Views by extension**: `.md`/`.markdown` → rendered (below); `.feature` →
+  Gherkin blocks from `gherkin.cjs` (one commentable block per Feature,
+  Background, Rule, Scenario); anything else → numbered source lines, one
+  commentable row per line. Markdown and Gherkin docs have a Source toggle.
+  Comment markers are kept per view.
+- **Doc pane (rendered view)**: `marked.parse()` of the raw markdown. Relative image `src`s
   are rewritten to `/asset/<id>/<relpath>` before insertion. Raw HTML in
   markdown renders as-is (agent-authored content, key-gated, localhost — not
   a sanitization boundary).
@@ -88,12 +100,26 @@ Single dark/light page (`prefers-color-scheme`), GitHub-ish typography.
 ## Feedback events
 
 Appended by the server to `<state_dir>/events` (JSONL), same plumbing as the
-fork, two differences: events are **not** cleared when docs change (the agent
-truncates the file after reading), and events are keyed to docs by path so
+fork, two differences: the file is **append-only** — never cleared by the
+server, the watcher, or the agent — and events are keyed to docs by path so
 they survive manifest reordering.
 
+`wait-for-feedback.cjs --session-dir <dir>` (run by the agent in the
+background) keeps a byte offset in `state/events.cursor`, waits until there
+are complete unread lines and `events` has been quiet for 2s, prints them,
+advances the cursor, and exits — waking the agent. One watcher per session
+(`state/watcher.pid`; `--status` reports liveness; exit 4 if one is already
+running). Exit 3 when the server stops or the session dir is removed, after
+delivering anything pending. Delivery is at-least-once.
+
+If `CMUX_SURFACE_ID` is set, the server also runs one debounced
+`cmux notify --surface … --desktop false` per burst of feedback
+(`MDREVIEW_CMUX_BIN` overrides the binary for tests).
+
 ```jsonl
-{"type":"comment","doc":"/abs/path/plan.md","blockIndex":12,"quote":"first ~120 chars of block text","selection":"exact selected text or null","comment":"…","timestamp":1234567890}
+{"type":"comment","doc":"/abs/path/plan.md","view":"rendered","blockIndex":12,"quote":"first ~120 chars of block text","selection":"exact selected text or null","comment":"…","timestamp":1234567890}
+{"type":"comment","doc":"/abs/path/plan.md","view":"source","line":42,"quote":"text of that line","selection":null,"comment":"…","timestamp":1234567890}
+{"type":"comment","doc":"/abs/path/a.feature","view":"gherkin","blockIndex":3,"line":28,"scenario":"…","quote":"Scenario: …","selection":null,"comment":"…","timestamp":1234567890}
 {"type":"comment","doc":"/abs/path/plan.md","scope":"doc","comment":"…","timestamp":1234567890}
 {"type":"approve","doc":"/abs/path/plan.md","timestamp":1234567890}
 ```
@@ -134,10 +160,11 @@ frame-template/content-fragment machinery.
 1. Start server once per session with `--project-dir <project root> --open`.
 2. `serve-doc.cjs <path>` for each doc to show. Share the full URL (with
    `?key=`) as fallback; browser auto-opens on the first doc.
-3. Say what's on screen, ask for feedback, end turn.
-4. Next turn: read `<state_dir>/events`, merge with the user's terminal
-   message, **truncate the events file**, apply feedback by editing docs in
-   place (live reload shows the new version). An `approve` event for a doc
+3. Say what's on screen, ask for feedback, arm `wait-for-feedback.cjs` in
+   the background (after a `--status` check), end turn.
+4. When the watcher exits, act on the events it printed, merged with any
+   terminal message; apply feedback by editing docs in place (live reload
+   shows the new version). Re-arm before ending each turn. An `approve` event for a doc
    (with no comments after it and no edits since) means the user signed off —
    proceed without re-asking.
 5. Before referencing the URL again, confirm the server is alive
@@ -149,7 +176,8 @@ frame-template/content-fragment machinery.
 
 - Editing markdown in the browser
 - Comment threading / resolution UI
-- Syntax highlighting, mermaid diagrams
+- Syntax highlighting, mermaid diagrams (Gherkin rendering is in since
+  2026-10-07; non-English Gherkin keywords are not)
 - Non-image assets (video, fonts); non-sibling assets (absolute paths, URLs
   pass through untouched)
 
