@@ -53,7 +53,7 @@ design.md Risks. No notification / killed → do step 3b.
 
 ### 2. Server: pin append-by-path, add debounced cmux ring
 
-**Status:** ☑ (3c5fbda; 21/21 tests; no ring on the operator's surface from the suite)
+**Status:** ☑ (3c5fbda; 20/20 tests after removing the rename test; no ring on the operator's surface from the suite)
 
 **What:** `scripts/server.cjs`, `tests/server.test.cjs`.
 
@@ -64,8 +64,6 @@ design.md Risks. No notification / killed → do step 3b.
   move onto it, so the existing suite never rings the operator's surface.
 - [ ] Test helper `sendReviewEvent(event)`: opens Node's global `WebSocket` to the server with the
   session-key cookie and an allowed `Origin`, sends one JSON text frame, closes.
-- [ ] Test: given `events` was renamed away, when a comment event is sent, then a new
-  `state/events` file is created containing it.
 - [ ] Test: given `CMUX_SURFACE_ID=test-surface` and `MDREVIEW_CMUX_BIN` = a stub script that
   appends its argv to a file, when three comments on `a.md` and an approve on `b.md` arrive < 2s
   apart, then the stub is called exactly once, between 1.8s and 3s after the last send, with
@@ -77,9 +75,9 @@ design.md Risks. No notification / killed → do step 3b.
   `cmux-notify-failed` line and the event is still in `events`.
 - [ ] Implement in `handleMessage` per design §2 (`execFile`, no shell; `MDREVIEW_CMUX_BIN`).
 
-**Why:** The ring is independent of the watcher and the smallest piece to land first. (The
-append-by-path test was written for the earlier rename design; it stays as a harmless regression
-check.)
+**Why:** The ring is independent of the watcher and the smallest piece to land first. (An
+append-by-path test written for the earlier rename design was removed after roborev job 3849 showed
+it never exercised the rename.)
 
 **Verify:** `node --test tests/` — old and new tests pass; run inside cmux with no ring observed on
 the operator's surface.

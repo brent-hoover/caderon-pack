@@ -191,16 +191,6 @@ test('WS upgrade without a key/cookie is rejected before the 101 response', asyn
   assert.ok(!data.startsWith('HTTP/1.1 101'));
 });
 
-test('Given events was renamed away, when a comment arrives, then a new events file holds it', async () => {
-  const port = Number(base.split(':').pop());
-  const eventsFile = path.join(stateDir, 'events');
-  if (fs.existsSync(eventsFile)) fs.renameSync(eventsFile, eventsFile + '.claimed-test');
-  await sendReviewEvent(port, TOKEN, { type: 'comment', doc: '/x/plan.md', scope: 'doc', comment: 'after rename' });
-  await sleep(300);
-  assert.match(fs.readFileSync(eventsFile, 'utf-8'), /after rename/);
-});
-
-
 const RING_SETTLE_MAX_MS = 3000;
 
 function startRingServer(extraEnv) {
