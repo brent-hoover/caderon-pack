@@ -345,7 +345,8 @@ count 0, `submit` in `events`; doc-level comment shows in the list.
 
 ### 12. Docs for the revised contract
 
-**Status:** ☐
+**Status:** ☑ — SKILL.md review loop read end to end; `rg "quiet|2s|burst|debounce"` empty in
+SKILL.md and DESIGN.md; 53/53.
 
 **What:** `SKILL.md` (watcher wakes on submit/approve; `submit` event; exit-3 may carry unsubmitted
 comments), skill `DESIGN.md`.

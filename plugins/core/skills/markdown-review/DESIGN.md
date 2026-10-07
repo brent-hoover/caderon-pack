@@ -58,6 +58,8 @@ constant-time compare) and security headers, unchanged.
 - `GET /` — `viewer.html` with `viewer.js` + `marked.min.js` + `gherkin.cjs` inlined
 - `GET /docs` — `[{ "id": 0, "path": "/abs/path/plan.md", "mtime": … }, …]`
 - `GET /doc/<id>` — raw markdown body of manifest entry `id`
+- `GET /events` — the session's recorded events (complete lines of
+  `state/events`) as a JSON array; the viewer rebuilds comment cards from it
 - `GET /asset/<id>/<relpath>` — asset referenced by doc `id`; resolved against
   the doc's directory. Servable iff `realpath(asset)` is inside
   `realpath(dirname(doc))` (subdirs ok, symlink-escape rejected), regular file,
@@ -87,15 +89,18 @@ Single dark/light page (`prefers-color-scheme`), GitHub-ish typography.
 - **Comments**: every top-level rendered block (headings, paragraphs, lists,
   code fences, tables, blockquotes) gets a stable index and a hover affordance;
   click → popover with textarea. If the user has text selected inside the
-  block, the selection is captured in the event. Commented blocks keep a
-  visible marker for the rest of the session. A fixed doc-level comment box
-  sits at the bottom of the pane, next to an **Approve** button.
-- **Approve**: per-doc button; click emits an approve event and marks the doc
+  block, the selection is captured in the event. Every saved comment shows as
+  a card after the element it comments on (doc-level ones above the footer
+  box), badged *pending* or *sent*; cards are rebuilt from `GET /events` on
+  load. Comments don't wake the agent: **Submit comments (N)** in the header
+  sends a `submit` event for everything pending.
+- **Approve**: per-doc button; click emits an approve event (which also sends
+  pending comments) and marks the doc
   approved (checkmark in sidebar and pane header). Approval is per doc
   content — if the doc's mtime changes after approval, the mark clears and a
   fresh approve is required.
 - Live reload preserves the currently selected doc and scroll position
-  (best effort), and re-applies commented-block markers by block index.
+  (best effort), and re-attaches comment cards.
 
 ## Feedback events
 
@@ -105,15 +110,18 @@ server, the watcher, or the agent — and events are keyed to docs by path so
 they survive manifest reordering.
 
 `wait-for-feedback.cjs --session-dir <dir>` (run by the agent in the
-background) keeps a byte offset in `state/events.cursor`, waits until there
-are complete unread lines and `events` has been quiet for 2s, prints them,
-advances the cursor, and exits — waking the agent. One watcher per session
+background) keeps a byte offset in `state/events.cursor`, waits until the
+unread lines include a `submit` or `approve` event, prints all unread lines,
+advances the cursor, and exits — waking the agent. Comments alone never wake
+it (a review produces one every 10–30s; the user decides when a batch is
+done). One watcher per session
 (`state/watcher.pid`; `--status` reports liveness; exit 4 if one is already
 running). Exit 3 when the server stops or the session dir is removed, after
-delivering anything pending. Delivery is at-least-once.
+delivering anything pending, submitted or not. Delivery is at-least-once.
 
-If `CMUX_SURFACE_ID` is set, the server also runs one debounced
-`cmux notify --surface … --desktop false` per burst of feedback
+If `CMUX_SURFACE_ID` is set, the server also runs one
+`cmux notify --surface … --desktop false` per submit or approve, summarising
+the comments since the last one
 (`MDREVIEW_CMUX_BIN` overrides the binary for tests).
 
 ```jsonl
@@ -122,6 +130,7 @@ If `CMUX_SURFACE_ID` is set, the server also runs one debounced
 {"type":"comment","doc":"/abs/path/a.feature","view":"gherkin","blockIndex":3,"line":28,"scenario":"…","quote":"Scenario: …","selection":null,"comment":"…","timestamp":1234567890}
 {"type":"comment","doc":"/abs/path/plan.md","scope":"doc","comment":"…","timestamp":1234567890}
 {"type":"approve","doc":"/abs/path/plan.md","timestamp":1234567890}
+{"type":"submit","timestamp":1234567890}
 ```
 
 An approve event only counts if no later edit touched the doc: the agent

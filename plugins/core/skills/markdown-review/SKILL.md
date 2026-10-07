@@ -59,7 +59,9 @@ node "$SKILL_DIR"/scripts/serve-doc.cjs --session-dir <session_dir> path/to/doc.
 ## The review loop
 
 1. Add or edit docs (edit in place — the browser live-reloads).
-2. Tell the user what's ready and share the URL.
+2. Tell the user what's ready and share the URL. Tell them to leave comments,
+   then click **Submit comments** (or **Approve**) when done — saved comments
+   alone don't reach you.
 3. **Arm the watcher**, then end your turn:
    ```bash
    node "$SKILL_DIR"/scripts/wait-for-feedback.cjs --session-dir <session_dir> --status
@@ -67,9 +69,9 @@ node "$SKILL_DIR"/scripts/serve-doc.cjs --session-dir <session_dir> path/to/doc.
    node "$SKILL_DIR"/scripts/wait-for-feedback.cjs --session-dir <session_dir>
    # ^ run this one with Bash run_in_background
    ```
-   The watcher exits once feedback has been quiet for 2s, which gives you a
-   new turn with no terminal input. If you run inside cmux, the server also
-   rings your cmux pane when feedback arrives.
+   The watcher exits when the user clicks Submit comments or Approve, which
+   gives you a new turn with no terminal input. If you run inside cmux, the
+   server also rings your cmux pane at that moment.
 4. When it exits, act on its output (below), merged with anything the user
    typed in the terminal — the terminal is primary. Apply feedback by editing
    docs in place.
@@ -84,8 +86,8 @@ have already been given. To re-read past feedback, read `events` directly.
 
 | Exit | Output | What to do |
 |------|--------|------------|
-| 0 | new events, JSONL | Act on them, then re-arm. |
-| 3 | new events (if any), then `{"type":"server-stopped","reason":…}` | Act on the events. Do **not** restart or re-arm in response: `idle timeout` / `owner process exited` mean the review was abandoned (tell the user); `signal` / `session-removed` mean it was stopped on purpose. Restart later only if you need to show docs again (see Health check). |
+| 0 | new events, JSONL — the comments plus the `submit`/`approve` that sent them | Act on them, then re-arm. |
+| 3 | new events (if any, including comments never submitted), then `{"type":"server-stopped","reason":…}` | Act on the events. Do **not** restart or re-arm in response: `idle timeout` / `owner process exited` mean the review was abandoned (tell the user); `signal` / `session-removed` mean it was stopped on purpose. Restart later only if you need to show docs again (see Health check). |
 | 4 | `{"type":"already-watching","pid":N}` | Nothing — a watcher is already running. |
 | 1 | error on stderr | Fix the command (e.g. wrong `--session-dir`). |
 
@@ -101,7 +103,11 @@ consumes that agent's feedback. A restarted server gets a **new**
 {"type":"comment","doc":"/abs/path/a.feature","view":"gherkin","blockIndex":3,"line":28,"scenario":"Scenario name","quote":"Scenario: Scenario name","selection":null,"comment":"…","timestamp":1706000101800}
 {"type":"comment","doc":"/abs/path/plan.md","scope":"doc","comment":"overall feedback","timestamp":1706000102000}
 {"type":"approve","doc":"/abs/path/plan.md","timestamp":1706000103000}
+{"type":"submit","timestamp":1706000104000}
 ```
+
+A `submit` carries no content: it means "the comments before me are a
+finished batch".
 
 Locate an inline comment by `line` when present (1-based source line; for
 Gherkin, the scenario/block header line), else by grepping `quote` in the
