@@ -131,13 +131,15 @@
     return textCache.get(doc.path);
   }
 
+  // Markdown: first '# ' heading. Gherkin: the Feature name ('#' lines there
+  // are comments, not headings). Anything else, or no match: the file name.
   function titleFor(doc) {
-    const text = textCache.get(doc.path);
-    if (text) {
-      const m = text.match(/^#\s+(.+)$/m);
-      if (m) return m[1].trim();
-    }
-    return doc.path.split('/').pop();
+    const text = textCache.get(doc.path) || '';
+    const extension = extensionOf(doc.path);
+    let match = null;
+    if (MARKDOWN_EXTENSIONS.includes(extension)) match = text.match(/^#\s+(.+)$/m);
+    else if (extension === GHERKIN_EXTENSION) match = text.match(/^\s*Feature:\s*(.+)$/m);
+    return match ? match[1].trim() : doc.path.split('/').pop();
   }
 
   // Recompute currentId from currentPath against the current `docs` array.
@@ -205,6 +207,7 @@
       const title = document.createElement('span');
       title.className = 'title';
       title.textContent = titleFor(doc);
+      li.title = doc.path;
       li.appendChild(title);
       if (approved.has(doc.path)) {
         const check = document.createElement('span');
@@ -400,6 +403,7 @@
   function renderHeader(doc, view) {
     const isApproved = approved.has(doc.path);
     $('#docheader').textContent = titleFor(doc) + (isApproved ? '  ✓ approved' : '');
+    $('#docheader').title = doc.path;
     const btn = $('#approve');
     btn.textContent = isApproved ? 'Approved ✓' : 'Approve';
     btn.classList.toggle('approved', isApproved);

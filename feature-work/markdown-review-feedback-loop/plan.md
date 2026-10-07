@@ -219,7 +219,8 @@ tables as tables, comments muted, tags as chips; a scenario comment lands in `ev
 
 ### 5c. Viewer: titles and path tooltips
 
-**Status:** ☐
+**Status:** ☑ — Chromium: `.feature` titles are Feature names, `.txt` shows the file name, `.md`
+keeps its `# ` heading; sidebar items and header carry the absolute path as `title`.
 
 **What:** `scripts/viewer.js` (`titleFor`, `title` attributes).
 
