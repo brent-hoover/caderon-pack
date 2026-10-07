@@ -354,6 +354,25 @@ comments), skill `DESIGN.md`.
 **Verify:** both read end to end; no remaining quiet-window wording (`rg -n "quiet|2s"` in the skill
 dir); `node --test tests/` green.
 
+### 13. Per-doc Submit
+
+**Status:** ☐
+
+**What:** watcher delivery rule, viewer count/Submit/sent status, server ring tally — all per doc
+(design §1 step 2, §2, §3).
+
+**Tasks:**
+
+- [ ] Watcher tests first: comments on X and Y, submit on X → only X's comments + submit; then
+  submit on Y → only Y's; comment on X after X's submit waits; stop → every undelivered comment;
+  doc-less submit covers all docs.
+- [ ] Server test first: comments on a.md and b.md, submit on a.md → ring `2 comments on a.md`
+  only; later submit on b.md → ring for b.md.
+- [ ] Viewer: per-doc count, `submit` with `doc`, per-doc sent status (Chromium check).
+
+**Verify:** `node --test tests/` green; Chromium: 3 comments on doc A, switch to B → `Submit
+comments (0)`; submit on A flips only A's cards.
+
 Then re-run step 8 (a)–(d) with the operator, adapted: (a) Approve; (b) three comments then Submit →
 one wake, one ring; (c) comment + Submit while the agent is mid-turn; (d) stop with unsubmitted
 comments → delivered with exit 3.
@@ -375,3 +394,4 @@ remain readable since all new fields are optional.
   storage-blocked check method; multi-doc ring body.
 - 2026-10-07: Step 3 tests reworked for the read-cursor design (roborev job 3848).
 - 2026-10-07: Steps 9–12 added after the end-to-end run (submit/approve wake, comment cards).
+- 2026-10-07: Step 13 — per-doc Submit (operator decision during the step 8 re-run).

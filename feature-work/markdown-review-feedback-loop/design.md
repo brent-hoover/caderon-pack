@@ -57,11 +57,19 @@ cursor (truncated by an agent following the pre-1.7 contract), the cursor resets
    → print `{"type":"server-stopped","reason":"session-removed"}`,
    exit 3. (`stop-server.sh` deletes `/tmp/md-review-*` session dirs; without this the watcher would
    poll forever.)
-2. If the unread events include a `submit` or `approve` event → deliver the unread events up to and
-   including the **last** trigger, exit 0. Comments saved after it belong to the next batch and keep
-   waiting (roborev jobs 3866, 3867).
+2. If there is a `submit` or `approve` event past the cursor (a *new trigger*) → deliver, exit 0.
+   Triggers are **per doc**: a trigger on doc X delivers the comments on X saved before it that no
+   earlier trigger on X covered. Comments on other docs, and comments on X saved after its last
+   trigger, keep waiting (operator decision 2026-10-07; roborev jobs 3866, 3867).
+
+   **What's delivered** is a function of the events file and the cursor, which now sits just past
+   the last trigger processed. For a comment *c* on doc *d*: *c* was delivered earlier iff a trigger
+   on *d* lies after *c* and before the cursor; *c* is delivered now iff it wasn't, and a new trigger
+   on *d* lies after it. The batch is those comments plus the new triggers, in file order; the cursor
+   then moves past the last new trigger. A trigger without `doc` (none are written any more) covers
+   every doc.
 3. Else if `state/server-stopped` holds a complete JSON marker → deliver any unread events
-   (even with no trigger among them), then print
+   (every comment not yet delivered, triggered or not), then print
    `{"type":"server-stopped","reason":<reason from server-stopped>}`, exit 3. The marker is checked
    *before* events are read (the server appends its last events before writing the marker), and a
    half-written marker counts as "not stopped yet", so feedback sent just before a stop is never
@@ -93,9 +101,9 @@ batch is done.
 
 ### 2. cmux ring — `server.cjs`
 
-In `handleMessage`, `comment` events are tallied (count and doc basenames) since the last ring. On a
-`submit` or `approve` event, if `process.env.CMUX_SURFACE_ID` is set, the server rings once with the
-tally and resets it:
+In `handleMessage`, `comment` events are tallied per doc since that doc's last ring. On a `submit` or
+`approve` event for a doc, if `process.env.CMUX_SURFACE_ID` is set, the server rings once with that
+doc's tally and resets it:
 
 ```
 cmux notify --surface $CMUX_SURFACE_ID --title "Review feedback" \
@@ -156,14 +164,15 @@ the same index (see *Comment cards* below, which now carry this).
 otherwise → file name. The sidebar item and doc header get `title="<absolute path>"` so the full
 path shows on hover.
 
-**Submit comments**: a header button, `Submit comments (N)`, where N counts comments saved since the
-last submit or approve (all docs). Disabled at 0. Click → `{"type":"submit"}` event; N resets.
-Approve also marks pending comments as sent (the watcher delivers them with the approve).
+**Submit comments**: a header button, `Submit comments (N)`, where N counts the **current doc's**
+pending comments. Disabled at 0. Click → `{"type":"submit","doc":<path>}`; that doc's comments
+become *sent*. Approve does the same for its doc. Comments on other docs are untouched.
 
 **Comment cards**: every saved comment is shown as a card — inline right after the element it
 comments on (block, source line, or Gherkin block; several cards stack), doc-level comments in a list
 above the footer box. Each card shows the comment text, the selection if any, and a *pending* /
-*sent* badge. A comment is *sent* iff a `submit` or `approve` event comes after it in `events`.
+*sent* badge. A comment is *sent* iff a `submit` or `approve` event **on the same doc** comes after
+it in `events`.
 Cards render only in the view the comment was made in. A card attaches to the element whose text
 still matches the comment's `quote` (preferring its original `blockIndex`/`line`), so cards follow
 their text when the agent edits the doc; if no element matches any more, the card moves to the
@@ -235,7 +244,7 @@ wrapped in try/catch because it can be unavailable, and the default width is use
 New event type, sent by the Submit button:
 
 ```jsonl
-{"type":"submit","timestamp":…}
+{"type":"submit","doc":"/abs/plan.md","timestamp":…}
 ```
 
 ```jsonl
@@ -256,8 +265,8 @@ messages: unchanged.
 - `state/events` — every event of the session, append-only JSONL. Never cleared; it lives and dies
   with the session dir (project sessions persist until the operator deletes `.md-review/`; `/tmp`
   sessions are removed by `stop-server.sh`), so growth is bounded per session.
-- `state/events.cursor` — decimal byte offset into `events` up to which events were delivered;
-  absent = 0.
+- `state/events.cursor` — decimal byte offset just past the last trigger delivered; absent = 0.
+  Comments before it may still be undelivered (their doc had no trigger yet).
 - `state/watcher.pid` — pid of the live watcher; absent when none.
 - Browser `localStorage['mdreview-sidebar-width']` — integer px.
 - Per-doc view choice — in-memory in the viewer; resets on reload.
@@ -369,3 +378,5 @@ delivery keep us below Optimal.
 - 2026-10-07: roborev (3863, 3865–3867) — deliver only through the last trigger; cards anchored by
   quote with an orphan fallback; Gherkin escapes parsed sequentially; sidebar re-clamped on resize
   and on cancelled drags.
+- 2026-10-07: Submit is per doc (operator decision): `submit` carries `doc`; delivery, sent status,
+  pending count and ring tally are all per doc; the cursor marks the last processed trigger.
