@@ -193,7 +193,11 @@ right element after toggling.
 
 ### 5b. Viewer: Gherkin view
 
-**Status:** ☐
+**Status:** ☑ — 46/46. Chromium (Playwright): sample.feature blocks
+preamble/feature/background/rule/scenario×2, step keywords accented, Examples table 2 th/2 td, tag
+chips, muted comments, doc strings; scenario comment → `view:"gherkin"`, `blockIndex:4`, `line:16`,
+`scenario`; Source toggle round-trips with per-view markers; operator's debit-traceability.feature
+renders with no headings (screenshot checked). cmux-browser check batched with 5c–6.
 
 **What:** `scripts/viewer.html` (`<!-- GHERKIN_JS -->` placeholder, Gherkin styles),
 `scripts/server.cjs` (`viewerPage()` injects `gherkin.cjs` text), `scripts/viewer.js` (render

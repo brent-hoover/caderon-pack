@@ -225,9 +225,12 @@
     renderSidebar();
   }
 
-  // Views: 'rendered' (markdown via marked) and 'source' (numbered lines).
+  // Views: 'rendered' (markdown via marked), 'gherkin' (.feature blocks) and
+  // 'source' (numbered lines).
   const MARKDOWN_EXTENSIONS = ['.md', '.markdown'];
-  const TOGGLEABLE_EXTENSIONS = MARKDOWN_EXTENSIONS;
+  const GHERKIN_EXTENSION = '.feature';
+  const TOGGLEABLE_EXTENSIONS = MARKDOWN_EXTENSIONS.concat([GHERKIN_EXTENSION]);
+  const STEP_KEYWORD_PATTERN = /^(Given|When|Then|And|But|\*)(\s.*)$/;
 
   function extensionOf(docPath) {
     const name = docPath.split('/').pop();
@@ -236,7 +239,10 @@
   }
 
   function defaultViewFor(docPath) {
-    return MARKDOWN_EXTENSIONS.includes(extensionOf(docPath)) ? 'rendered' : 'source';
+    const extension = extensionOf(docPath);
+    if (MARKDOWN_EXTENSIONS.includes(extension)) return 'rendered';
+    if (extension === GHERKIN_EXTENSION) return 'gherkin';
+    return 'source';
   }
 
   function currentViewFor(docPath) {
@@ -259,6 +265,7 @@
     const source = await docText(doc);
     const view = currentViewFor(doc.path);
     if (view === 'source') renderSource(pane, doc, source);
+    else if (view === 'gherkin') renderGherkin(pane, doc, source);
     else renderRendered(pane, doc, id, source);
     renderHeader(doc, view);
     pane.scrollTop = scrollTop;
@@ -308,6 +315,86 @@
     });
     pane.innerHTML = '';
     pane.appendChild(table);
+  }
+
+  function renderGherkin(pane, doc, source) {
+    const marks = markersFor(doc.path, 'gherkin');
+    pane.innerHTML = '';
+    parseGherkinBlocks(source).forEach((block, i) => {
+      const el = document.createElement('div');
+      el.className = 'block gherkin-block';
+      el.dataset.kind = block.kind;
+      if (marks.has(i)) el.classList.add('commented');
+      appendGherkinLines(el, block.lines);
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.popover')) return;
+        openPopover(el, gherkinAnchor(block, i));
+      });
+      pane.appendChild(el);
+    });
+  }
+
+  function gherkinAnchor(block, blockIndex) {
+    const header = block.lines.find(l => l.kind === 'keyword') || block.lines[0];
+    const anchor = { view: 'gherkin', blockIndex: blockIndex, line: block.startLine, quote: header.text.trim().slice(0, QUOTE_MAX_CHARS) };
+    if (block.kind === 'scenario') anchor.scenario = block.title;
+    return anchor;
+  }
+
+  // Consecutive table lines become one <table>; every other line is one row div.
+  function appendGherkinLines(container, lines) {
+    let tableLines = [];
+    const flushTable = () => {
+      if (tableLines.length > 0) container.appendChild(gherkinTable(tableLines));
+      tableLines = [];
+    };
+    lines.forEach(line => {
+      if (line.kind === 'table') { tableLines.push(line); return; }
+      flushTable();
+      container.appendChild(gherkinLine(line));
+    });
+    flushTable();
+  }
+
+  function gherkinLine(line) {
+    const el = document.createElement('div');
+    el.className = 'gl gl-' + line.kind;
+    const text = line.kind === 'docstring' ? line.text : line.text.trim();
+    const step = line.kind === 'step' ? text.match(STEP_KEYWORD_PATTERN) : null;
+    if (step) {
+      const keyword = document.createElement('span');
+      keyword.className = 'kw';
+      keyword.textContent = step[1];
+      el.appendChild(keyword);
+      el.appendChild(document.createTextNode(step[2]));
+    } else if (line.kind === 'tag') {
+      text.split(/\s+/).forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = 'tag';
+        chip.textContent = tag;
+        el.appendChild(chip);
+      });
+    } else {
+      el.textContent = text;
+    }
+    return el;
+  }
+
+  // First row is the header row — true for Examples tables, and the common
+  // convention for data tables.
+  function gherkinTable(lines) {
+    const table = document.createElement('table');
+    table.className = 'gherkin-table';
+    lines.forEach((line, rowIndex) => {
+      const row = document.createElement('tr');
+      line.text.trim().split('|').slice(1, -1).forEach(cellText => {
+        const cell = document.createElement(rowIndex === 0 ? 'th' : 'td');
+        cell.textContent = cellText.trim();
+        row.appendChild(cell);
+      });
+      table.appendChild(row);
+    });
+    return table;
   }
 
   function renderHeader(doc, view) {

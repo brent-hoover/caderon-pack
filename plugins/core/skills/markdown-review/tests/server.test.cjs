@@ -88,6 +88,8 @@ test('serves viewer with inlined marked and viewer scripts', async () => {
   assert.match(body, /id="doclist"/);
   assert.doesNotMatch(body, /<!-- MARKED_JS -->/);
   assert.doesNotMatch(body, /<!-- VIEWER_JS -->/);
+  assert.doesNotMatch(body, /<!-- GHERKIN_JS -->/);
+  assert.match(body, /function parseGherkinBlocks/);
   assert.match(body, /marked/);
   assert.match(body, /refreshDocs/);
 });

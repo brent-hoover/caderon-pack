@@ -89,6 +89,19 @@ body {
 #doc table.source td.code { white-space: pre-wrap; word-break: break-word; }
 #doc table.source tr.block:hover { outline: none; background: var(--bg2); }
 #doc table.source tr.commented td.ln { box-shadow: inset 3px 0 0 var(--warn); }
+/* gherkin view */
+#doc .gherkin-block { padding: 0.35rem 0; }
+#doc .gl { min-height: 1.4em; line-height: 1.5; }
+#doc .gl-keyword { font-weight: 600; margin-top: 0.25rem; }
+#doc .gherkin-block[data-kind="feature"] > .gl-keyword:first-of-type { font-size: 1.3rem; }
+#doc .gherkin-block[data-kind="scenario"] .gl:not(.gl-keyword):not(.gl-tag):not(.gl-comment),
+#doc .gherkin-block[data-kind="background"] .gl:not(.gl-keyword):not(.gl-tag):not(.gl-comment),
+#doc .gherkin-table { margin-left: 1.5rem; }
+#doc .gl-step .kw { color: var(--accent); font-weight: 600; }
+#doc .gl-comment { color: var(--fg2); font-style: italic; font-size: 0.85rem; }
+#doc .gl-docstring { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; white-space: pre-wrap; background: var(--bg2); padding: 0 0.5rem; }
+#doc .gl-tag .tag { display: inline-block; font-size: 0.75rem; padding: 0 0.45rem; margin-right: 0.3rem; border: 1px solid var(--border); border-radius: 999px; color: var(--fg2); }
+#doc .gherkin-table { font-size: 0.85rem; margin-top: 0.25rem; margin-bottom: 0.25rem; }
 /* comment affordances */
 .block { position: relative; border-radius: 4px; }
 .block:hover { outline: 2px solid var(--border); outline-offset: 6px; cursor: pointer; }
@@ -135,6 +148,7 @@ body {
 </main>
 <div id="toast"></div>
 <!-- MARKED_JS -->
+<!-- GHERKIN_JS -->
 <!-- VIEWER_JS -->
 </body>
 </html>
