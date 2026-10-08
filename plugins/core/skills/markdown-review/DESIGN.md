@@ -2,7 +2,7 @@
 
 2026-07-07. Status: approved (pending spec review). Updated 2026-10-07 for the
 feedback watcher, per-file-type views and resizable sidebar — rationale in
-`feature-work/markdown-review-feedback-loop/design.md` at the repo root.
+`feature-work/archived/markdown-review-feedback-loop/design.md` at the repo root.
 
 ## Purpose
 

@@ -27,12 +27,16 @@ Inside cmux, the server also rings the agent's pane on each submit or approve.
 Saved comments stay visible as *pending*/*sent* cards. The cards are rebuilt from `GET /events`.
 
 Docs are rendered by extension:
-- `.md` is rendered, with a Source toggle.
+- `.md` / `.markdown` are rendered, with a Source toggle.
 - `.feature` is shown as Gherkin blocks, with a Source toggle.
 - Anything else is shown as numbered source with per-line comments.
 
-The sidebar is drag-resizable. Titles come from the `Feature:` name or the file name, and the full
-path shows as a tooltip.
+The sidebar is drag-resizable. Titles come from:
+- a markdown doc's first `# ` heading;
+- a `.feature` file's `Feature:` name;
+- otherwise, the file name.
+
+The full path shows as a tooltip.
 
 ## New modules / files
 
@@ -40,7 +44,10 @@ All under `plugins/core/skills/markdown-review/` unless noted.
 
 - `scripts/wait-for-feedback.cjs`: background watcher that delivers a session's submitted feedback
   to the agent.
-  - Reads the append-only `state/events` past `state/events.cursor`.
+  - Reads the whole append-only `state/events` on every poll.
+  - `state/events.cursor` marks the last trigger delivered. A comment counts as delivered once a
+    trigger on its doc at or before the cursor follows it. Submitting doc A moves the cursor past an
+    unsubmitted comment on doc B, and that comment still waits for B's own submit.
   - Holds one watcher per session through `watcher.pid`.
   - Has a `--status` flag.
   - Exit codes: 0 delivered, 3 server stopped, 4 already watching, 1 usage error.
@@ -50,13 +57,14 @@ All under `plugins/core/skills/markdown-review/` unless noted.
 - `tests/gherkin.test.cjs`: parser tests.
 - `tests/fixtures/sample.feature`: Gherkin fixture used by the parser tests.
 - `feature-work/README.md` (repo root): doc-flow README.
-- `feature-work/markdown-review-feedback-loop/{problem,design,plan}.md`: this feature's docs.
+- `feature-work/markdown-review-feedback-loop/{problem,design,plan}.md`: this feature's docs, now
+  archived next to this record in `feature-work/archived/markdown-review-feedback-loop/`.
 
 ## Modified files
 
 - `scripts/server.cjs`:
   - Records `submit` events, which carry `doc`.
-  - Adds `GET /events` (session key required; returns complete lines only).
+  - Adds `GET /events` (session key or cookie required; returns complete lines only).
   - Runs `cmux notify` on submit/approve, with per-doc comment tallies.
   - Injects `gherkin.cjs` into the viewer page.
 - `scripts/viewer.js`, `scripts/viewer.html`:
@@ -65,9 +73,11 @@ All under `plugins/core/skills/markdown-review/` unless noted.
   - Per-doc **Submit comments (N)** button. The doc-level button is relabelled "Add comment".
   - Comment cards, re-anchored occurrence-first, then nearest position. Cards that can't be placed
     go in the doc-level list.
-  - Open drafts survive re-renders.
+  - An open inline draft survives a doc-level comment, Submit and Approve, because these update the
+    page in place. A view toggle or a live reload re-renders the doc and discards it.
   - Drag-resizable sidebar, clamped to 180px–50vw and stored in `localStorage`.
-  - `titleFor` uses the `Feature:` name and adds path tooltips.
+  - `titleFor` uses the `Feature:` name for `.feature` files, the `# ` heading for markdown, and the
+    file name otherwise; adds path tooltips.
 - `tests/server.test.cjs`:
   - `spawnServer` scrubs `CMUX_SURFACE_ID`.
   - `sendReviewEvent` sends events over WebSocket.
@@ -99,7 +109,7 @@ All under `plugins/core/skills/markdown-review/` unless noted.
   - If an agent still on the old contract truncates `events` below the cursor, the watcher resets
     the cursor to 0 (`effectiveCursor()`).
 - **New state files**, both created with mode 0600:
-  - `state/events.cursor`: byte offset of what has been delivered.
+  - `state/events.cursor`: byte offset just past the last trigger delivered.
   - `state/watcher.pid`.
 - **HTTP:** `GET /events` returns the session's events as a JSON array. Like every other route, it
   needs the session key or the session cookie.
@@ -151,5 +161,5 @@ none
 - 2026-10-07: Merged as PR #10. Codex synced to core 1.7.0 with
   `codex plugin marketplace upgrade caderon-pack`.
 - 2026-10-08: Skill `DESIGN.md` file-tree line for the watcher corrected (it still said events are
-  delivered "once they settle").
+  delivered "once they settle"), and its rationale link pointed at the archived design.md.
 - 2026-10-08: Completed (Brent Hoover)
