@@ -26,7 +26,7 @@ solves auth, live-reload, browser events, and lifecycle.
     start-server.sh      # launcher; prints startup JSON
     stop-server.sh
     serve-doc.cjs        # register doc paths with a running session
-    wait-for-feedback.cjs # deliver unread events to the agent once they settle
+    wait-for-feedback.cjs # deliver a doc's comments when it is submitted or approved
     gherkin.cjs          # split .feature source into commentable blocks
     viewer.html          # full-page viewer: sidebar + doc pane + comment UI
     viewer.js            # client logic (injected into viewer.html at serve time)
