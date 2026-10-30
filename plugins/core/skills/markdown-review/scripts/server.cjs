@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { readIndex, readRevision, revisionDir } = require('./revisions.cjs');
 
 // ========== WebSocket Protocol (RFC 6455) — verbatim from fork ==========
 
@@ -173,7 +174,8 @@ location.replace('/');
 // ========== Manifest ==========
 
 let manifest = [];              // absolute, deduped doc paths
-const docWatchers = new Set();  // paths currently under fs.watchFile
+const docWatchers = new Map();  // doc path -> revision index path under fs.watchFile
+const latestRevisions = new Map(); // doc path -> latest revision already announced
 
 function loadManifest() {
   let raw;
@@ -193,23 +195,50 @@ function loadManifest() {
   return out;
 }
 
+// The viewer only ever shows recorded revisions, so the server watches each
+// doc's revision index, not the doc: edits the agent hasn't revised stay
+// invisible. watchFile also polls an index that doesn't exist yet.
 function syncDocWatchers() {
   const current = new Set(manifest);
-  for (const p of docWatchers) {
-    if (!current.has(p)) { fs.unwatchFile(p); docWatchers.delete(p); }
+  for (const [p, indexPath] of docWatchers) {
+    if (!current.has(p)) { fs.unwatchFile(indexPath); docWatchers.delete(p); latestRevisions.delete(p); }
   }
   for (const p of manifest) {
     if (docWatchers.has(p)) continue;
-    docWatchers.add(p);
-    fs.watchFile(p, { interval: 1000 }, (curr, prev) => {
+    const indexPath = path.join(revisionDir(p), 'index.jsonl');
+    docWatchers.set(p, indexPath);
+    latestRevisions.set(p, latestRevisionOf(p));
+    fs.watchFile(indexPath, { interval: 1000 }, (curr, prev) => {
       if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) return;
-      touchActivity();
-      const id = manifest.indexOf(p);
-      if (id < 0) return;
-      console.log(JSON.stringify({ type: 'doc-updated', file: p }));
-      broadcast({ type: 'reload', id });
+      announceNewRevision(p);
     });
   }
+}
+
+// Only a higher revision is news: a deleted index (zeroed stats) or a
+// repaired partial line changes the file without adding a revision.
+function announceNewRevision(docPath) {
+  const revision = latestRevisionOf(docPath);
+  if (revision === null || revision <= (latestRevisions.get(docPath) || 0)) return;
+  latestRevisions.set(docPath, revision);
+  touchActivity();
+  const id = manifest.indexOf(docPath);
+  if (id < 0) return;
+  console.log(JSON.stringify({ type: 'doc-revised', file: docPath, revision }));
+  broadcast({ type: 'revision', id, revision });
+}
+
+// null when the doc has no history, or history that can't be trusted (a
+// symlink or an invalid line); the error is logged so the agent can fix it.
+function latestRevisionOf(docPath) {
+  let index;
+  try {
+    index = readIndex(docPath);
+  } catch (e) {
+    console.error('revision history unreadable for ' + docPath + ': ' + e.message);
+    return null;
+  }
+  return index.length > 0 ? index[index.length - 1].revision : null;
 }
 
 function refreshManifest() {
@@ -228,8 +257,31 @@ function docsPayload() {
   return manifest.map((p, id) => {
     let mtime = null;
     try { mtime = fs.statSync(p).mtimeMs; } catch (e) { /* stale entry */ }
-    return { id, path: p, mtime };
+    return { id, path: p, mtime, revision: latestRevisionOf(p) };
   });
+}
+
+const REVISION_ROUTE = /^\/doc\/(\d+)\/rev\/(\d+)$/;
+
+function notFound(res, message) {
+  res.writeHead(404, securityHeaders({ 'Content-Type': 'text/plain; charset=utf-8' }));
+  res.end(message || 'Not found');
+}
+
+function serveRevision(res, docPath, revision) {
+  if (!docPath || revision < 1) { notFound(res); return; }
+  let body;
+  try {
+    body = readRevision(docPath, revision);
+  } catch (e) {
+    // A missing revision is an ordinary 404; anything else (a symlink, an
+    // unreadable file) is history the agent needs to look at.
+    if (e.code !== 'ENOENT') console.error('revision ' + revision + ' of ' + docPath + ' unreadable: ' + e.message);
+    notFound(res);
+    return;
+  }
+  res.writeHead(200, securityHeaders({ 'Content-Type': 'text/markdown; charset=utf-8' }));
+  res.end(body);
 }
 
 function docById(idStr) {
@@ -358,19 +410,28 @@ function handleRequest(req, res) {
   } else if (pathname === '/events') {
     res.writeHead(200, securityHeaders({ 'Content-Type': 'application/json' }));
     res.end(JSON.stringify(recordedEvents()));
-  } else if (pathname.startsWith('/doc/')) {
-    const docPath = docById(pathname.slice(5));
-    let body = null;
-    if (docPath) {
-      try { body = fs.readFileSync(docPath, 'utf-8'); } catch (e) { /* stale entry */ }
-    }
-    if (body === null) {
-      res.writeHead(404, securityHeaders());
-      res.end('Not found');
+  } else if (REVISION_ROUTE.test(pathname)) {
+    const [, idStr, revisionStr] = pathname.match(REVISION_ROUTE);
+    serveRevision(res, docById(idStr), Number(revisionStr));
+  } else if (pathname.startsWith('/revisions/')) {
+    const docPath = docById(pathname.slice(11));
+    if (!docPath) { notFound(res); return; }
+    let index;
+    try {
+      index = readIndex(docPath);
+    } catch (e) {
+      notFound(res, 'revision history unreadable for ' + docPath + ': ' + e.message);
       return;
     }
-    res.writeHead(200, securityHeaders({ 'Content-Type': 'text/markdown; charset=utf-8' }));
-    res.end(body);
+    res.writeHead(200, securityHeaders({ 'Content-Type': 'application/json' }));
+    res.end(JSON.stringify(index));
+  } else if (pathname.startsWith('/doc/')) {
+    const docPath = docById(pathname.slice(5));
+    if (!docPath) { notFound(res); return; }
+    const latest = latestRevisionOf(docPath);
+    // Never fall back to the working file: it may be mid-edit.
+    if (latest === null) { notFound(res, docPath + ' has no revisions — run serve-doc or revise'); return; }
+    serveRevision(res, docPath, latest);
   } else if (pathname.startsWith('/asset/')) {
     const rest = pathname.slice(7);
     const slash = rest.indexOf('/');
@@ -615,7 +676,7 @@ function startServer() {
       JSON.stringify({ reason, timestamp: Date.now() }) + '\n'
     );
     fs.unwatchFile(MANIFEST_FILE);
-    for (const p of docWatchers) fs.unwatchFile(p);
+    for (const indexPath of docWatchers.values()) fs.unwatchFile(indexPath);
     clearInterval(lifecycleCheck);
     for (const socket of clients) {
       try { socket.destroy(); } catch (e) { /* already gone */ }

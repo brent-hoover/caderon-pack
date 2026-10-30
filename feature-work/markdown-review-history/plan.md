@@ -125,7 +125,7 @@ The session-liveness and discovery code is ~20 lines that `revise.cjs` duplicate
 
 ### 3. Server serves revisions (with a viewer handler)
 
-**Status:** ☐
+**Status:** ☑
 
 **What:**
 
@@ -161,7 +161,7 @@ The session-liveness and discovery code is ~20 lines that `revise.cjs` duplicate
 **Verify:**
 
 - `S` with the 4 scenario names plus the deletion test: all show `✔`.
-- `T`: 79 pass, 0 fail.
+- `T`: 81 pass, 0 fail.
 
 **Note:** This session reviews docs with the **installed** skill (core 1.7.0 in the plugin cache).
 Worktree changes don't affect it.
@@ -213,7 +213,7 @@ Extra unit tests:
 **Verify:**
 
 - `S` with the 7 scenario names and the 5 unit names: all show `✔`.
-- `T`: 91 pass, 0 fail.
+- `T`: 93 pass, 0 fail.
 
 ### 5. Diff for Gherkin and plain text
 
@@ -236,7 +236,7 @@ Extra unit tests:
 **Verify:**
 
 - `S` with those 3 names: all show `✔`.
-- `T`: 94 pass, 0 fail.
+- `T`: 96 pass, 0 fail.
 
 ### 6. Comment carry-forward logic
 
@@ -276,7 +276,7 @@ Add the tests:
 **Verify:**
 
 - `S` with the 5 scenario names: all show `✔`.
-- `T`: 99 pass, 0 fail.
+- `T`: 101 pass, 0 fail.
 
 ### 7. Viewer on revisions and per-block rendering (no behaviour change)
 
@@ -306,7 +306,7 @@ steps 8–10 only add to it.
 
 **Verify:**
 
-- `T`: 99 pass, 0 fail.
+- `T`: 101 pass, 0 fail.
 - `tests/browser/run.sh --smoke` prints `ok smoke` and exits 0.
 - Manually, in the operator's browser: comments on an existing doc still attach to the right
   blocks.
@@ -353,7 +353,7 @@ Extend `run.sh` with one browser check per `rich-diff` scenario, named after it.
 **Verify:**
 
 - `tests/browser/run.sh` prints `ok <name>` for all 9 and `ok smoke`, and exits 0.
-- `T`: 99 pass, 0 fail.
+- `T`: 101 pass, 0 fail.
 
 ### 9. Revision navigation
 
@@ -389,7 +389,7 @@ file before the page loads.
 **Verify:**
 
 - `tests/browser/run.sh` prints `ok` for those 7 plus every earlier check, and exits 0.
-- `T`: 99 pass, 0 fail.
+- `T`: 101 pass, 0 fail.
 
 ### 10. Revision-aware feedback and carried-forward comments
 
@@ -429,7 +429,7 @@ Extend `run.sh`:
 **Verify:**
 
 - `tests/browser/run.sh` prints `ok` for those 9 plus every earlier check, and exits 0.
-- `T`: 99 pass, 0 fail.
+- `T`: 101 pass, 0 fail.
 
 ### 11. Skill docs, version bump, traceability
 
@@ -473,7 +473,7 @@ it makes scenario traceability a test.
 
 - `S` with the 3 scenario names, the `DESIGN.md` check and `every scenario has a test`: all show
   `✔`.
-- `T`: 104 pass, 0 fail.
+- `T`: 106 pass, 0 fail.
 - `M` exits 0.
 
 ### 12. End-to-end dogfood
@@ -584,3 +584,6 @@ All 38 scenarios are covered, with no gaps.
   - Totals updated.
 - 2026-10-30: Step 1 gained 5 untrusted-history tests (symlinks, index validation) after the
   automated security review; totals shifted by 5.
+- 2026-10-30: Totals from step 3 on shifted by 2: a symlinked-lock test (roborev job 4526) and a
+  `/doc/<id>/rev/<n>` route test in step 3. Step 3 was also checked in a real browser: an unrevised
+  write stayed hidden, and a revise updated the page.

@@ -95,7 +95,7 @@
       let data;
       try { data = JSON.parse(msg.data); } catch (e) { return; }
       if (data.type === 'manifest') refreshDocs();
-      else if (data.type === 'reload') onDocChanged(data.id);
+      else if (data.type === 'revision') onDocChanged(data.id);
     };
 
     ws.onclose = () => {
