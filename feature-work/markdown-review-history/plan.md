@@ -57,7 +57,7 @@ commits, and roborev reviews each one. Paths below are relative to
 
 ### 1. History storage: `revisions.cjs`
 
-**Status:** ☐
+**Status:** ☑
 
 **What:** Add `scripts/revisions.cjs` exporting `recordRevision(docPath)`, `readIndex(docPath)`,
 `readRevision(docPath, n)` and `revisionDir(docPath)`.
