@@ -170,11 +170,16 @@ because a plain `require` returns nothing under the repo's `"type": "module"` (v
 - **`pairChanges(ops)`** — within a run of `removed` items directly followed by a run of `added`
   items, pairs them one-for-one in order into `changed`, when both have the same kind (same token
   type, or same Gherkin block kind). Anything left over stays `removed` or `added`.
-- **Block equality is by rendered output.** Two tokens are the same when `marked.parser([token])`
-  produces identical HTML. Each revision is parsed with its own `tokens.links`, the document's
-  reference-link definitions. This catches changes that leave a block's raw text alone, such as an
-  edited reference-link definition, which changes the resolved `href`. It also catches a trailing
-  double-space hard break. Raw text is never trimmed.
+- **Equality is by rendered output, at every level.** Two units are the same when they render to
+  identical HTML. This covers top-level blocks, list items, table rows and cells, and blockquote
+  children. Each revision is rendered with its own `tokens.links`, the document's reference-link
+  definitions.
+  - This catches changes that leave raw text alone, such as an edited reference-link definition
+    that changes a resolved `href` inside a list item or table cell, or a trailing double-space
+    hard break. Raw text is never trimmed.
+  - Rendering works on a `structuredClone` of the token. marked v15 mutates some tokens while
+    rendering (it prepends checkbox markup to loose task-list items), and the diff module must stay
+    pure.
 - **`diffMarkdown(tokensA, tokensB)`** — diffs the non-space top-level tokens using that equality,
   then pairs. A `changed` pair descends by token type:
 
@@ -252,10 +257,12 @@ list, marked "anchor not found".
 
 - "open";
 - "addressed in revision k";
-- "addressed in revision k (text removed)". If the comparison on screen includes step `k` (base
-  < k ≤ target), the card sits on the removed block. Otherwise it sits after block `afterIndex`:
-  always in the full doc, and in a diff whose range doesn't include the removal. For example, text
-  removed in revision 2 isn't in a 2→3 diff at all.
+- "addressed in revision k (text removed)". The card sits on the removed block only when the diff
+  on screen has that block as a `removed` node: the block exists in the base revision and is
+  removed by the target. Otherwise the card sits after block `afterIndex`. That covers the full
+  doc, a range that misses the removal (text removed in revision 2 isn't in a 2→3 diff), and a
+  range whose base predates the block (a paragraph added in 2 and removed in 3 is in neither end of
+  a 1→3 diff).
 
 **Comments made in diff view.** They take `quote`, `occurrence` and `blockIndex` from the
 **target revision's unmarked block**, the anchor list of the target's full render, found through
@@ -473,3 +480,6 @@ and revise as a CLI.
   - Defined comment placement when the removal falls outside the shown range.
   - Blockquotes descend into their block tokens.
   - The Out of scope section now holds the problem doc's former non-goals.
+- 2026-10-30: Applied roborev job 4522.
+  - Rendered-output equality applies to nested units and renders a cloned token.
+  - Removal placement is keyed to a `removed` node actually being in the shown diff.
