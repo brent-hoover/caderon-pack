@@ -15,6 +15,11 @@ const SCRIPTS = path.join(__dirname, '..', '..', 'scripts');
 const BROWSER_SESSION = 'mdreview-browser-tests';
 // The server polls revision indexes every 1s; 5s covers a poll plus a fetch.
 const WAIT_TIMEOUT_MS = 5000;
+// What a timed-out wait reports, to tell a slow page from a wrong one.
+const PAGE_STATE = '({ status: document.querySelector(".status").textContent, ' +
+  'header: document.querySelector("#docheader").textContent, ' +
+  'revinfo: document.querySelector("#revinfo").textContent, ' +
+  'doc: document.querySelector("#doc").textContent.slice(0, 120) })';
 const WAIT_STEP_MS = 100;
 
 // Check names match scenario names in
@@ -498,7 +503,13 @@ function startReview(docs) {
     },
     edit: (name, content) => fs.writeFileSync(docPath(name), content),
     revise: (name) => node('revise.cjs', ['--session-dir', info.session_dir, docPath(name)]),
-    waitFor: (expression) => waitUntil(() => evaluate(expression) === true, expression),
+    waitFor: (expression) => {
+      try {
+        return waitUntil(() => evaluate(expression) === true, expression);
+      } catch (e) {
+        throw new Error(e.message + ' — page showed ' + JSON.stringify(evaluate(PAGE_STATE)));
+      }
+    },
     waitForEvent: (matches) => waitUntil(() => readEvents(eventsFile).find(matches), 'a matching event in ' + eventsFile),
     stop: () => run(path.join(SCRIPTS, 'stop-server.sh'), [info.session_dir])
   };

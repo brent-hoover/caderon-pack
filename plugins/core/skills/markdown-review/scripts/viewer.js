@@ -223,6 +223,8 @@
     if (id === currentId) {
       // A new revision of the doc on screen: show what changed since the one
       // the operator was looking at.
+      // Until the new revision is on screen, there is nothing current to approve.
+      $('#approve').disabled = true;
       const shown = shownRevisions.get(doc.path);
       const base = shown && shown.revision < doc.revision ? shown.revision : null;
       comparisons.set(doc.path, { base: base, target: doc.revision, lastBase: base });
@@ -1477,6 +1479,8 @@
     const doc = docs[currentId];
     const shown = shownRevisions.get(doc.path);
     if (!shown) { flash('Nothing to approve — this revision failed to load'); return; }
+    // A newer revision may have been announced and still be loading.
+    if (shown.revision !== doc.revision || shown.sha256 !== doc.sha256) { flash(APPROVE_LATEST_HINT); return; }
     sendEvent({ type: 'approve', doc: doc.path, revision: shown.revision, sha256: shown.sha256 });
     markDocSent(doc.path);
     renderSubmitButton();
