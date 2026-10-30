@@ -280,7 +280,7 @@ Add the tests:
 
 ### 7. Viewer on revisions and per-block rendering (no behaviour change)
 
-**Status:** ☐
+**Status:** ☑
 
 **What:**
 
@@ -292,7 +292,7 @@ Add the tests:
   - Use the shared `resolveAnchor`.
 - **`tests/server.test.cjs:84`:** extend it to assert the placeholder is replaced and the
   `revision-diff.cjs` content is inlined.
-- **New `tests/browser/run.sh` and `tests/browser/scenarios.txt`:** `run.sh` drives `agent-browser`
+- **New `tests/browser/run.cjs` and `tests/browser/scenarios.txt`:** `run.sh` drives `agent-browser`
   against a server on a temp project with fixture docs. In this step it runs only `--smoke`:
   1. Comment on a block and submit.
   2. The events file has the comment.
@@ -307,7 +307,7 @@ steps 8–10 only add to it.
 **Verify:**
 
 - `T`: 108 pass, 0 fail.
-- `tests/browser/run.sh --smoke` prints `ok smoke` and exits 0.
+- `tests/browser/run.cjs --smoke` prints `ok smoke` and exits 0.
 - Manually, in the operator's browser: comments on an existing doc still attach to the right
   blocks.
 
@@ -352,7 +352,7 @@ Extend `run.sh` with one browser check per `rich-diff` scenario, named after it.
 
 **Verify:**
 
-- `tests/browser/run.sh` prints `ok <name>` for all 9 and `ok smoke`, and exits 0.
+- `tests/browser/run.cjs` prints `ok <name>` for all 9 and `ok smoke`, and exits 0.
 - `T`: 108 pass, 0 fail.
 
 ### 9. Revision navigation
@@ -388,7 +388,7 @@ file before the page loads.
 
 **Verify:**
 
-- `tests/browser/run.sh` prints `ok` for those 7 plus every earlier check, and exits 0.
+- `tests/browser/run.cjs` prints `ok` for those 7 plus every earlier check, and exits 0.
 - `T`: 108 pass, 0 fail.
 
 ### 10. Revision-aware feedback and carried-forward comments
@@ -428,7 +428,7 @@ Extend `run.sh`:
 
 **Verify:**
 
-- `tests/browser/run.sh` prints `ok` for those 9 plus every earlier check, and exits 0.
+- `tests/browser/run.cjs` prints `ok` for those 9 plus every earlier check, and exits 0.
 - `T`: 108 pass, 0 fail.
 
 ### 11. Skill docs, version bump, traceability
@@ -497,7 +497,7 @@ revision. Record the result in this plan's change log.
 **Verify:**
 
 - The operator confirms in the browser.
-- `T` is green, `tests/browser/run.sh` is green, and `M` exits 0.
+- `T` is green, `tests/browser/run.cjs` is green, and `M` exits 0.
 
 ## Scenario coverage
 
@@ -597,3 +597,6 @@ All 38 scenarios are covered, with no gaps.
   `/docs`. The viewer now fetches text by revision and approves the revision on screen, part of
   step 7's text-cache change, done early.
 - 2026-10-30: Totals from step 7 on +1: the stale-hash 409 test (roborev job 4548).
+- 2026-10-30: The browser runner is `tests/browser/run.cjs` (Node), not `run.sh`. The operator's rule
+  is that shell scripts over 20 lines become a real language, and the skill is all Node. It is run as
+  `node tests/browser/run.cjs [--only <name>]`.

@@ -92,6 +92,8 @@ test('serves viewer with inlined marked and viewer scripts', async () => {
   assert.doesNotMatch(body, /<!-- VIEWER_JS -->/);
   assert.doesNotMatch(body, /<!-- GHERKIN_JS -->/);
   assert.match(body, /function parseGherkinBlocks/);
+  assert.doesNotMatch(body, /<!-- REVISION_DIFF_JS -->/);
+  assert.match(body, /function diffMarkdown/);
   assert.match(body, /marked/);
   assert.match(body, /refreshDocs/);
 });

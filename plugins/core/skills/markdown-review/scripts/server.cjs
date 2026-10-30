@@ -138,12 +138,14 @@ const viewerHtml = fs.readFileSync(path.join(__dirname, 'viewer.html'), 'utf-8')
 const viewerJs = fs.readFileSync(path.join(__dirname, 'viewer.js'), 'utf-8');
 const markedJs = fs.readFileSync(path.join(__dirname, 'marked.min.js'), 'utf-8');
 const gherkinJs = fs.readFileSync(path.join(__dirname, 'gherkin.cjs'), 'utf-8');
+const revisionDiffJs = fs.readFileSync(path.join(__dirname, 'revision-diff.cjs'), 'utf-8');
 
 function viewerPage() {
   // split/join, not replace(): script bodies may contain '$' patterns
   return viewerHtml
     .split('<!-- MARKED_JS -->').join('<script>\n' + markedJs + '\n</script>')
     .split('<!-- GHERKIN_JS -->').join('<script>\n' + gherkinJs + '\n</script>')
+    .split('<!-- REVISION_DIFF_JS -->').join('<script>\n' + revisionDiffJs + '\n</script>')
     .split('<!-- VIEWER_JS -->').join('<script>\n' + viewerJs + '\n</script>');
 }
 

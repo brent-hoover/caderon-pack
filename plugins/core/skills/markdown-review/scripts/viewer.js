@@ -294,18 +294,11 @@
     });
   }
 
-  // Doc-level comments have scope 'doc'; events from pre-view viewers are 'rendered'.
-  function commentView(event) {
-    if (event.scope === 'doc') return 'doc';
-    return event.view || 'rendered';
-  }
+  // commentView, anchorIndexOf and resolveAnchor come from revision-diff.cjs,
+  // shared with the carry-forward logic so both anchor comments the same way.
 
   function commentsIn(docPath, view) {
     return savedComments.filter(saved => saved.event.doc === docPath && commentView(saved.event) === view);
-  }
-
-  function anchorIndexOf(event) {
-    return commentView(event) === 'source' ? event.line : event.blockIndex;
   }
 
   // anchors: [{el, index, quote}] for the elements just rendered. A comment
@@ -318,7 +311,7 @@
     const cardsByAnchor = new Map();
     const orphans = [];
     commentsIn(docPath, view).forEach(saved => {
-      const anchor = nearestMatchingAnchor(anchors, saved.event);
+      const anchor = resolveAnchor(saved.event, anchors);
       if (!anchor) { orphans.push(saved.event); return; }
       if (!cardsByAnchor.has(anchor)) cardsByAnchor.set(anchor, []);
       cardsByAnchor.get(anchor).push(saved);
@@ -354,17 +347,6 @@
     text.textContent = saved.event.comment;
     card.appendChild(text);
     return card;
-  }
-
-  function nearestMatchingAnchor(anchors, event) {
-    const matches = anchors.filter(anchor => anchor.quote === event.quote);
-    if (event.occurrence !== undefined && matches[event.occurrence]) return matches[event.occurrence];
-    const original = anchorIndexOf(event);
-    let nearest = null;
-    matches.forEach(anchor => {
-      if (nearest === null || Math.abs(anchor.index - original) < Math.abs(nearest.index - original)) nearest = anchor;
-    });
-    return nearest;
   }
 
   // How many earlier anchors share this anchor's quote — stored on the comment
@@ -438,8 +420,16 @@
   }
 
   // Each renderer fills the pane and returns its commentable anchors.
+  // One wrapper per non-space top-level token: wrapper i is block i, the same
+  // index the diff and comment carry-forward use, even for a token that
+  // renders nothing (an HTML comment) or several elements.
   function renderRendered(pane, id, source) {
-    pane.innerHTML = marked.parse(source);
+    pane.innerHTML = '';
+    marked.lexer(source).filter(token => token.type !== 'space').forEach(token => {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = marked.parser([token]);
+      pane.appendChild(wrapper);
+    });
     pane.querySelectorAll('img').forEach(img => {
       const src = img.getAttribute('src') || '';
       // leave absolute URLs (scheme:), root paths, and data: alone
