@@ -13,6 +13,7 @@ a removed table column is marked
 a task item keeps its checkbox when its text changes
 a heading level change is marked
 a Gherkin table keeps its cells when a step changes
+a dropped Gherkin table column is marked
 A newly revised doc opens in diff view against the previous revision
 The operator switches from the diff to the full revised doc
 The operator switches from the full revised doc back to the diff

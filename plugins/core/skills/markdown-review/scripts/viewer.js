@@ -149,15 +149,18 @@
     if (doc.revision === null) {
       return { text: '*' + doc.path + ' has no revisions yet — the agent needs to run serve-doc or revise.*', isLoaded: false };
     }
-    let r;
+    let status;
+    let text;
     try {
-      r = await fetch('/doc/' + doc.id + '/rev/' + doc.revision + '?sha256=' + doc.sha256);
+      const r = await fetch('/doc/' + doc.id + '/rev/' + doc.revision + '?sha256=' + doc.sha256);
+      status = r.status;
+      // The body can fail after the headers arrived, so it is read in here too.
+      text = r.ok ? await r.text() : null;
     } catch (e) {
       console.error('revision ' + doc.revision + ' of ' + doc.path + ' failed to load: ' + e.message);
       return { text: '*Failed to load revision ' + doc.revision + ' of ' + doc.path + ' (network error)*', isLoaded: false };
     }
-    if (!r.ok) return { text: '*Failed to load revision ' + doc.revision + ' of ' + doc.path + ' (' + r.status + ')*', isLoaded: false };
-    const text = await r.text();
+    if (text === null) return { text: '*Failed to load revision ' + doc.revision + ' of ' + doc.path + ' (' + status + ')*', isLoaded: false };
     textCache.set(key, text);
     return { text: text, isLoaded: true };
   }
@@ -482,10 +485,15 @@
     const doc = docs[id];
     if (!doc) return;
     const generation = ++renderGeneration;
+    // A draft open on the previous render must not be saved against this one.
+    closePopover();
     const view = currentViewFor(doc.path);
     // Markdown and Gherkin source views show the revision itself, never a diff.
     const isDiffable = !(view === 'source' && TOGGLEABLE_EXTENSIONS.includes(extensionOf(doc.path)));
     const entries = await revisionEntriesOrNone(doc);
+    // comparisonFor records the comparison it picks, so a superseded render
+    // must stop before it.
+    if (generation !== renderGeneration) return;
     const comparison = comparisonFor(doc, entries);
     const target = await revisionText(doc, entries, comparison.target);
     const base = isDiffable && comparison.base !== null ? await revisionText(doc, entries, comparison.base) : null;
@@ -495,7 +503,6 @@
     if (generation !== renderGeneration) return;
     const pane = $('#doc');
     const scrollTop = opts.preserveScroll ? pane.scrollTop : 0;
-    closePopover();
     // A failed load shows an error, not the revision, so it can't be approved.
     if (target.isLoaded) {
       shownRevisions.set(doc.path, { revision: comparison.target, sha256: entrySha256(doc, entries, comparison.target) });
@@ -1136,21 +1143,39 @@
       const tag = rowIndex === 0 ? 'th' : 'td';
       const targetCells = line.op === 'removed' ? [] : splitTableRow(node.target.lines[line.targetIndex].text);
       const baseCells = line.op === 'added' ? [] : splitTableRow(node.base.lines[line.baseIndex].text);
-      const cells = line.op === 'removed' ? baseCells : targetCells;
-      cells.forEach((text, i) => {
-        const cell = document.createElement(tag);
-        if (line.op === 'changed' && baseCells[i] !== text) {
-          cell.appendChild(wordRunElement({ op: 'removed', text: baseCells[i] || '' }));
-          cell.appendChild(wordRunElement({ op: 'added', text: text }));
-        } else {
+      if (line.op === 'changed') {
+        // Every position of either row, so a dropped column still shows.
+        const width = Math.max(baseCells.length, targetCells.length);
+        for (let i = 0; i < width; i++) row.appendChild(changedGherkinCell(tag, baseCells[i], targetCells[i]));
+      } else {
+        (line.op === 'removed' ? baseCells : targetCells).forEach(text => {
+          const cell = document.createElement(tag);
           cell.textContent = text;
-        }
-        row.appendChild(cell);
-      });
+          row.appendChild(cell);
+        });
+      }
       if (line.op === 'added' || line.op === 'removed') row.classList.add(line.op === 'added' ? 'd-added' : 'd-removed');
       table.appendChild(row);
     });
     return table;
+  }
+
+  // baseText or targetText is undefined for a column only one side has.
+  function changedGherkinCell(tag, baseText, targetText) {
+    const cell = document.createElement(tag);
+    if (targetText === undefined) {
+      cell.textContent = baseText;
+      cell.classList.add('d-removed');
+    } else if (baseText === undefined) {
+      cell.textContent = targetText;
+      cell.classList.add('d-added');
+    } else if (baseText === targetText) {
+      cell.textContent = targetText;
+    } else {
+      cell.appendChild(wordRunElement({ op: 'removed', text: baseText }));
+      cell.appendChild(wordRunElement({ op: 'added', text: targetText }));
+    }
+    return cell;
   }
 
   // Equal, added and removed lines keep their Gherkin styling; a changed line
@@ -1279,6 +1304,8 @@
   // anchor: { view, quote, blockIndex? , line? } — copied onto the comment event,
   // plus the quote's occurrence among the anchors on screen.
   function openPopover(el, clickedAnchor) {
+    // The doc this draft belongs to, fixed now: currentId may change before Save.
+    const docPath = docs[currentId].path;
     const onScreen = renderedAnchors.find(a => a.el === el);
     const anchor = Object.assign({}, clickedAnchor, { occurrence: occurrenceOf(renderedAnchors, onScreen) });
     closePopover();
@@ -1305,7 +1332,7 @@
     save.onclick = () => {
       const comment = ta.value.trim();
       if (!comment) return;
-      saveInlineComment(Object.assign({ type: 'comment', doc: docs[currentId].path }, anchor,
+      saveInlineComment(Object.assign({ type: 'comment', doc: docPath }, anchor,
         { selection: selection, comment: comment }));
     };
     row.appendChild(save);

@@ -35,6 +35,7 @@ const CHECKS = [
   { name: 'a task item keeps its checkbox when its text changes', run: checkTaskCheckboxKept },
   { name: 'a heading level change is marked', run: checkHeadingLevelChange },
   { name: 'a Gherkin table keeps its cells when a step changes', run: checkGherkinTableKept },
+  { name: 'a dropped Gherkin table column is marked', run: checkGherkinColumnDropped },
   { name: 'A newly revised doc opens in diff view against the previous revision', run: checkOpensInDiffView },
   { name: 'The operator switches from the diff to the full revised doc', run: checkSwitchToFullDocument },
   { name: 'The operator switches from the full revised doc back to the diff', run: checkSwitchBackToDiff },
@@ -231,6 +232,13 @@ function checkGherkinTableKept() {
   withDiff('login.feature', feature, feature.replace('they log in', 'they all log in'), () => {
     expectEqual(evaluate('document.querySelectorAll("#doc .gherkin-table td").length'), 2, 'table body cells');
     expectDeep(evaluate(TEXTS_OF('#doc ins.d-add')), ['all'], 'added words');
+  });
+}
+
+function checkGherkinColumnDropped() {
+  const feature = 'Feature: Login\n\n  Scenario: Users\n    Given these users\n      | name | role |\n      | ann  | admin |\n';
+  withDiff('login.feature', feature, feature.replace('| name | role |', '| name |').replace('| ann  | admin |', '| ann  |'), () => {
+    expectDeep(evaluate(TEXTS_OF('#doc .gherkin-table .d-removed')), ['role', 'admin'], 'removed cells');
   });
 }
 
