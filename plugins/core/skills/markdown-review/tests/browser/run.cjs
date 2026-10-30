@@ -30,7 +30,14 @@ const CHECKS = [
   { name: 'A Gherkin step change is marked inside its scenario', run: checkGherkinStepChange },
   { name: 'A plain-text doc shows changed lines', run: checkPlainTextChange },
   { name: 'Identical revisions show no change marking', run: checkIdenticalRevisions },
-  { name: 'A code fence change is marked per line', run: checkCodeLineChange }
+  { name: 'A code fence change is marked per line', run: checkCodeLineChange },
+  { name: 'A newly revised doc opens in diff view against the previous revision', run: checkOpensInDiffView },
+  { name: 'The operator switches from the diff to the full revised doc', run: checkSwitchToFullDocument },
+  { name: 'The operator switches from the full revised doc back to the diff', run: checkSwitchBackToDiff },
+  { name: 'The operator compares any two revisions', run: checkCompareAnyTwo },
+  { name: 'The operator views changes since their approval', run: checkChangesSinceApproval },
+  { name: 'A doc with only one revision has no diff', run: checkSingleRevision },
+  { name: 'Choosing a base revision newer than the target is rejected', run: checkInvertedRangeRejected }
 ];
 
 function main() {
@@ -97,14 +104,15 @@ function checkDetailsBlock() {
 
 // ===== rich diff =====
 
-// Serves `name` with `base`, revises it to `target`, opens the viewer and
-// waits for the 1→2 diff, then hands the page to `inspect`.
+// Serves `name` with `base` and opens the viewer on it, then revises it to
+// `target`: the viewer shows the 1→2 diff live. Hands the page to `inspect`.
 function withDiff(name, base, target, inspect) {
   const review = startReview({ [name]: base });
   try {
+    review.open();
+    review.waitFor('document.querySelector("#revinfo").textContent === "Revision 1 of 1"');
     review.edit(name, target);
     review.revise(name);
-    review.open();
     review.waitFor('document.querySelector("#diffinfo").textContent.endsWith("revision 1 and revision 2")');
     inspect(review);
   } finally {
@@ -184,6 +192,111 @@ function checkCodeLineChange() {
   });
 }
 
+// ===== revision navigation =====
+
+const PLAN_REVISIONS = ['# Plan\n\nFirst draft.\n', '# Plan\n\nSecond draft.\n', '# Plan\n\nThird draft.\n'];
+const DIFF_INFO = 'document.querySelector("#diffinfo").textContent';
+const CHANGE_MARKS = 'document.querySelectorAll("#doc .d-added, #doc .d-removed, #doc ins, #doc del").length';
+
+// plan.md with revisions 1–3. The viewer was last open on revision 2, so it
+// now opens on the 2→3 diff.
+function withThreeRevisions(inspect) {
+  const review = startReview({ 'plan.md': PLAN_REVISIONS[0] });
+  try {
+    review.edit('plan.md', PLAN_REVISIONS[1]);
+    review.revise('plan.md');
+    review.open();
+    review.waitFor('document.querySelector("#revinfo").textContent === "Revision 2 of 2"');
+    review.leave();
+    review.edit('plan.md', PLAN_REVISIONS[2]);
+    review.revise('plan.md');
+    review.open();
+    review.waitFor(DIFF_INFO + ' === "Changes between revision 2 and revision 3"');
+    inspect(review);
+  } finally {
+    review.stop();
+  }
+}
+
+function chooseRevision(selectId, revision) {
+  evaluate('(() => { const s = document.querySelector("#' + selectId + '"); s.value = "' + revision + '"; ' +
+    's.dispatchEvent(new Event("change")); return true; })()');
+}
+
+function checkOpensInDiffView() {
+  withThreeRevisions(() => {
+    expectEqual(evaluate('document.querySelector("#revinfo").textContent'), 'Revision 3 of 3', 'revision header');
+    expectDeep(evaluate(TEXTS_OF('#doc ins.d-add')), ['Third'], 'added words');
+  });
+}
+
+function checkSwitchToFullDocument() {
+  withThreeRevisions(review => {
+    browser(['click', '#diff-toggle']);
+    review.waitFor(DIFF_INFO + ' === ""');
+    expectEqual(evaluate(CHANGE_MARKS), 0, 'change marks');
+    expectEqual(evaluate('document.querySelector("#doc").textContent.includes("Third draft.")'), true, 'revision 3 text');
+  });
+}
+
+function checkSwitchBackToDiff() {
+  withThreeRevisions(review => {
+    browser(['click', '#diff-toggle']);
+    review.waitFor(DIFF_INFO + ' === ""');
+    browser(['click', '#diff-toggle']);
+    review.waitFor(DIFF_INFO + ' === "Changes between revision 2 and revision 3"');
+  });
+}
+
+function checkCompareAnyTwo() {
+  withThreeRevisions(review => {
+    chooseRevision('base-revision', 1);
+    review.waitFor(DIFF_INFO + ' === "Changes between revision 1 and revision 3"');
+    expectDeep(evaluate(TEXTS_OF('#doc del.d-del')), ['First'], 'removed words');
+  });
+}
+
+function checkChangesSinceApproval() {
+  const review = startReview({ 'plan.md': PLAN_REVISIONS[0] });
+  try {
+    review.appendEvent({ type: 'approve', doc: review.docPath('plan.md'), revision: 1,
+      sha256: review.indexEntries('plan.md')[0].sha256, timestamp: Date.now() });
+    review.edit('plan.md', PLAN_REVISIONS[1]);
+    review.revise('plan.md');
+    review.edit('plan.md', PLAN_REVISIONS[2]);
+    review.revise('plan.md');
+    review.open();
+    review.waitFor('document.querySelector("#since-approved").textContent === "Changes since approved (rev 1)"');
+    browser(['click', '#since-approved']);
+    review.waitFor(DIFF_INFO + ' === "Changes between revision 1 and revision 3"');
+  } finally {
+    review.stop();
+  }
+}
+
+function checkSingleRevision() {
+  const review = startReview({ 'intro.md': '# Intro\n\nOnly draft.\n' });
+  try {
+    review.open();
+    review.waitFor('document.querySelector("#revinfo").textContent === "Revision 1 of 1"');
+    expectEqual(evaluate('document.querySelector("#diff-toggle").disabled'), true, 'Show changes disabled');
+    expectEqual(evaluate(CHANGE_MARKS), 0, 'change marks');
+  } finally {
+    review.stop();
+  }
+}
+
+function checkInvertedRangeRejected() {
+  withThreeRevisions(review => {
+    chooseRevision('base-revision', 1);
+    review.waitFor(DIFF_INFO + ' === "Changes between revision 1 and revision 3"');
+    chooseRevision('target-revision', 1);
+    review.waitFor('document.querySelector("#toast").textContent === "Base revision must be older than the target"');
+    expectEqual(evaluate(DIFF_INFO), 'Changes between revision 1 and revision 3', 'comparison kept');
+    expectEqual(evaluate('document.querySelector("#target-revision").value'), '3', 'target select restored');
+  });
+}
+
 // ===== review session =====
 
 // A temp project with the given docs, a running server, and every doc served.
@@ -199,6 +312,12 @@ function startReview(docs) {
   const eventsFile = path.join(info.state_dir, 'events');
   return {
     open: () => browser(['open', info.url]),
+    // Navigate away so the next open() is a fresh page load on the same origin.
+    leave: () => browser(['open', 'about:blank']),
+    docPath: docPath,
+    indexEntries: (name) => fs.readFileSync(path.join(root, '.revisions', name, 'index.jsonl'), 'utf-8')
+      .split('\n').filter(Boolean).map(line => JSON.parse(line)),
+    appendEvent: (event) => fs.appendFileSync(eventsFile, JSON.stringify(event) + '\n'),
     edit: (name, content) => fs.writeFileSync(docPath(name), content),
     revise: (name) => node('revise.cjs', ['--session-dir', info.session_dir, docPath(name)]),
     waitFor: (expression) => waitUntil(() => evaluate(expression) === true, expression),

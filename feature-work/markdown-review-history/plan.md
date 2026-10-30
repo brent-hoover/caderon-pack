@@ -357,7 +357,7 @@ Extend `run.sh` with one browser check per `rich-diff` scenario, named after it.
 
 ### 9. Revision navigation
 
-**Status:** ☐
+**Status:** ☑
 
 **What:** In `viewer.js` and `viewer.html`:
 
@@ -603,3 +603,8 @@ All 38 scenarios are covered, with no gaps.
 - 2026-10-30: Step 8 done. Totals from step 8 on +2 for the pairing tests. The "No changes" check
   uses a trailing blank line: the bytes change, so revise records it, but the rendered doc doesn't.
   Identical content can't produce two adjacent revisions, because revise dedupes it.
+- 2026-10-30: Step 9 done. The approve event now carries `revision` and `sha256`, ahead of step 10,
+  because rebuilding approvals from events needs them. The revision controls sit in their own bar
+  under the header: in the header, they squeezed the doc title out (seen in a screenshot). The
+  step 8 checks now open the viewer before revising, because a fresh browser opens on the full
+  latest revision.

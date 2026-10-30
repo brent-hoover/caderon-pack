@@ -16,7 +16,10 @@
   let currentId = null;
   let currentPath = null;         // path of the doc currentId refers to
   const textCache = new Map();    // revisionKey(doc) -> that revision's source
-  const shownRevisions = new Map(); // path -> revisionKey of the revision on screen
+  const shownRevisions = new Map(); // path -> {revision, sha256} of the target revision on screen
+  // path -> {base, target, lastBase}: what the operator is comparing. base null
+  // is the full document; lastBase is what Show changes returns to.
+  const comparisons = new Map();
   // Every comment saved this session, in order: [{event, isSent}]. Rebuilt from
   // GET /events on load; a comment is sent once a submit or approve on its own
   // doc follows it.
@@ -24,7 +27,7 @@
   let currentOrphans = [];        // comment events of the current doc/view whose text is gone
   let renderedAnchors = [];       // [{el, index, quote}] of the doc on screen
   const viewChoice = new Map();   // path -> view the operator toggled to (in-memory; resets on reload)
-  const approved = new Map();     // path -> revisionKey approved
+  const approvals = new Map();    // path -> {revision, sha256} the operator approved
   const updated = new Set();      // paths changed since last viewed
   let popover = null;
 
@@ -207,10 +210,19 @@
     const doc = docs[id];
     if (!doc) return;
     await docText(doc);
-    if (approved.has(doc.path) && approved.get(doc.path) !== revisionKey(doc)) approved.delete(doc.path);
     remapCurrentId();
-    if (id === currentId) await renderDoc(id, { preserveScroll: true });
-    else updated.add(doc.path);
+    if (id === currentId) {
+      // A new revision of the doc on screen: show what changed since the one
+      // the operator was looking at.
+      const shown = shownRevisions.get(doc.path);
+      const base = shown && shown.revision < doc.revision ? shown.revision : null;
+      comparisons.set(doc.path, { base: base, target: doc.revision, lastBase: base });
+      await renderDoc(id, { preserveScroll: true });
+    } else {
+      // Opened later, it starts from the last revision the operator viewed.
+      comparisons.delete(doc.path);
+      updated.add(doc.path);
+    }
     renderSidebar();
   }
 
@@ -230,7 +242,7 @@
       title.textContent = titleFor(doc);
       li.title = doc.path;
       li.appendChild(title);
-      if (approved.has(doc.path)) {
+      if (isApprovalCurrent(doc)) {
         const check = document.createElement('span');
         check.className = 'check';
         check.textContent = '✓';
@@ -283,6 +295,11 @@
     events.forEach(event => {
       if (event.type === 'comment') savedComments.push({ event: event, isSent: false });
       else if (TRIGGER_EVENT_TYPES.includes(event.type)) markDocSent(event.doc);
+      // Approvals from viewers that predate revisions name no revision and
+      // can't be tied to content, so they don't count.
+      if (event.type === 'approve' && event.revision !== undefined) {
+        approvals.set(event.doc, { revision: event.revision, sha256: event.sha256 });
+      }
     });
     renderSubmitButton();
   }
@@ -398,35 +415,47 @@
     return holder;
   }
 
+  let headerState = null; // the arguments of the last renderHeader, for refreshes
+
   async function renderDoc(id, opts) {
     const doc = docs[id];
     if (!doc) return;
     const pane = $('#doc');
     const scrollTop = opts.preserveScroll ? pane.scrollTop : 0;
     closePopover();
-    const loaded = await docText(doc);
-    const source = loaded.text;
+    const entries = await revisionEntriesOrNone(doc);
+    const comparison = comparisonFor(doc, entries);
+    const target = await revisionText(doc, entries, comparison.target);
     // A failed load shows an error, not the revision, so it can't be approved.
-    if (loaded.isLoaded) shownRevisions.set(doc.path, revisionKey(doc));
-    else shownRevisions.delete(doc.path);
+    if (target.isLoaded) {
+      shownRevisions.set(doc.path, { revision: comparison.target, sha256: entrySha256(doc, entries, comparison.target) });
+      writeLastViewed(doc.path, comparison.target);
+    } else {
+      shownRevisions.delete(doc.path);
+    }
     const view = currentViewFor(doc.path);
     // Markdown and Gherkin source views show the revision itself, never a diff.
     const isDiffable = !(view === 'source' && TOGGLEABLE_EXTENSIONS.includes(extensionOf(doc.path)));
-    const base = isDiffable ? await baseRevisionFor(doc) : null;
+    const base = isDiffable && comparison.base !== null ? await revisionText(doc, entries, comparison.base) : null;
     let anchors;
-    let comparison = null;
-    if (base) {
-      const shown = renderDiff(pane, id, view, base.source, source);
+    let shownComparison = null;
+    if (base && base.isLoaded && target.isLoaded) {
+      const shown = renderDiff(pane, id, view, base.text, target.text);
       anchors = shown.anchors;
-      comparison = { from: base.revision, to: doc.revision, isIdentical: shown.isIdentical };
-    } else if (view === 'source') anchors = renderSource(pane, source);
-    else if (view === 'gherkin') anchors = renderGherkin(pane, source);
-    else anchors = renderRendered(pane, id, source);
+      shownComparison = { from: comparison.base, to: comparison.target, isIdentical: shown.isIdentical };
+    } else if (view === 'source') anchors = renderSource(pane, target.text);
+    else if (view === 'gherkin') anchors = renderGherkin(pane, target.text);
+    else anchors = renderRendered(pane, id, target.text);
     renderedAnchors = anchors;
     currentOrphans = attachCommentCards(doc.path, view, anchors);
-    renderHeader(doc, view, comparison);
+    headerState = { doc: doc, view: view, shownComparison: shownComparison, entries: entries, comparison: comparison };
+    renderHeader(headerState);
     renderDocComments(doc, currentOrphans);
     pane.scrollTop = scrollTop;
+  }
+
+  function refreshHeader() {
+    if (headerState) renderHeader(headerState);
   }
 
   // Each renderer fills the pane and returns its commentable anchors.
@@ -594,24 +623,108 @@
   };
   const revisionEntriesCache = new Map(); // revisionKey(latest doc) -> GET /revisions entries
 
-  // The revision a diff compares against: the one before the doc's latest.
-  // null when there is none or it can't be loaded (logged), so the full doc shows.
-  async function baseRevisionFor(doc) {
-    if (!doc.revision || doc.revision < 2) return null;
-    let entries;
+  // The doc's revision index, or [] when it can't be loaded (logged): the
+  // latest revision then still shows, without navigation.
+  async function revisionEntriesOrNone(doc) {
+    if (doc.revision === null) return [];
     try {
-      entries = await revisionEntries(doc);
+      return await revisionEntries(doc);
     } catch (e) {
       console.error('revision list for ' + doc.path + ' failed to load: ' + e.message);
-      return null;
+      return [];
     }
-    const entry = entries.find(e => e.revision === doc.revision - 1);
-    if (!entry) return null;
-    const baseDoc = { id: doc.id, path: doc.path, revision: entry.revision, sha256: entry.sha256 };
-    const loaded = await docText(baseDoc);
-    if (!loaded.isLoaded) return null;
-    return { revision: entry.revision, source: loaded.text };
   }
+
+  function entrySha256(doc, entries, revision) {
+    const entry = entries.find(e => e.revision === revision);
+    if (entry) return entry.sha256;
+    return revision === doc.revision ? doc.sha256 : null;
+  }
+
+  // {text, isLoaded} of one revision of the doc.
+  async function revisionText(doc, entries, revision) {
+    const sha256 = entrySha256(doc, entries, revision);
+    if (revision === null || sha256 === null) return docText(doc);
+    return docText({ id: doc.id, path: doc.path, revision: revision, sha256: sha256 });
+  }
+
+  // What to show: the operator's choice for this doc, else — when the doc has
+  // revisions they haven't seen — the diff from the last one they viewed,
+  // else the latest revision in full.
+  function comparisonFor(doc, entries) {
+    const chosen = comparisons.get(doc.path);
+    if (chosen && entries.some(e => e.revision === chosen.target)) return chosen;
+    const lastViewed = readLastViewed(doc.path);
+    const hasUnseen = lastViewed !== null && lastViewed < doc.revision && entries.some(e => e.revision === lastViewed);
+    const opened = hasUnseen
+      ? { base: lastViewed, target: doc.revision, lastBase: lastViewed }
+      : { base: null, target: doc.revision, lastBase: null };
+    comparisons.set(doc.path, opened);
+    return opened;
+  }
+
+  const LAST_VIEWED_KEY_PREFIX = 'mdreview-last-viewed:';
+
+  // Per-browser convenience: storage can be unavailable or blocked, and then
+  // every doc simply opens on its latest revision.
+  function readLastViewed(docPath) {
+    let stored;
+    try { stored = localStorage.getItem(LAST_VIEWED_KEY_PREFIX + docPath); } catch (e) { return null; }
+    const revision = Number(stored);
+    return stored !== null && Number.isInteger(revision) && revision > 0 ? revision : null;
+  }
+
+  function writeLastViewed(docPath, revision) {
+    try { localStorage.setItem(LAST_VIEWED_KEY_PREFIX + docPath, String(revision)); } catch (e) { /* storage unavailable */ }
+  }
+
+  // An approval still names a revision in the doc's history (deleted and
+  // recreated history can reuse the number for different content).
+  function validApproval(doc, entries) {
+    const approval = approvals.get(doc.path);
+    if (!approval) return null;
+    const entry = entries.find(e => e.revision === approval.revision);
+    return entry && entry.sha256 === approval.sha256 ? approval : null;
+  }
+
+  function isApprovalCurrent(doc) {
+    const approval = approvals.get(doc.path);
+    return Boolean(approval) && approval.revision === doc.revision && approval.sha256 === doc.sha256;
+  }
+
+  function showComparison(base, target) {
+    const comparison = comparisons.get(currentPath);
+    comparisons.set(currentPath, { base: base, target: target, lastBase: base !== null ? base : comparison.lastBase });
+    renderDoc(currentId, { preserveScroll: false });
+  }
+
+  const BASE_NOT_OLDER_MESSAGE = 'Base revision must be older than the target';
+
+  $('#base-revision').onchange = (e) => {
+    const comparison = comparisons.get(currentPath);
+    const base = Number(e.target.value);
+    if (base >= comparison.target) { flash(BASE_NOT_OLDER_MESSAGE); refreshHeader(); return; }
+    showComparison(base, comparison.target);
+  };
+
+  $('#target-revision').onchange = (e) => {
+    const comparison = comparisons.get(currentPath);
+    const target = Number(e.target.value);
+    if (comparison.base !== null && comparison.base >= target) { flash(BASE_NOT_OLDER_MESSAGE); refreshHeader(); return; }
+    showComparison(comparison.base, target);
+  };
+
+  $('#diff-toggle').onclick = () => {
+    const comparison = comparisons.get(currentPath);
+    if (comparison.base !== null) { showComparison(null, comparison.target); return; }
+    const hasLastBase = comparison.lastBase !== null && comparison.lastBase < comparison.target;
+    showComparison(hasLastBase ? comparison.lastBase : comparison.target - 1, comparison.target);
+  };
+
+  $('#since-approved').onclick = () => {
+    const doc = docs[currentId];
+    showComparison(approvals.get(doc.path).revision, doc.revision);
+  };
 
   async function revisionEntries(doc) {
     const key = revisionKey(doc);
@@ -901,10 +1014,13 @@
     return { anchors: anchors, isIdentical: lines.every(line => line.op === 'equal') };
   }
 
-  // comparison: {from, to, isIdentical} when a diff is on screen, else null.
-  function renderHeader(doc, view, comparison) {
-    $('#diffinfo').textContent = comparisonText(comparison);
-    const isApproved = approved.has(doc.path);
+  // state: {doc, view, shownComparison ({from, to, isIdentical} when a diff is
+  // on screen, else null), entries, comparison}.
+  function renderHeader(state) {
+    const doc = state.doc;
+    $('#diffinfo').textContent = comparisonText(state.shownComparison);
+    renderRevisionControls(doc, state.entries, state.comparison);
+    const isApproved = state.comparison.target === doc.revision && isApprovalCurrent(doc);
     $('#docheader').textContent = titleFor(doc) + (isApproved ? '  ✓ approved' : '');
     $('#docheader').title = doc.path;
     const btn = $('#approve');
@@ -913,7 +1029,36 @@
     renderSubmitButton();
     const toggle = $('#view-toggle');
     toggle.hidden = !TOGGLEABLE_EXTENSIONS.includes(extensionOf(doc.path));
-    toggle.textContent = view === 'source' ? 'Rendered' : 'Source';
+    toggle.textContent = state.view === 'source' ? 'Rendered' : 'Source';
+  }
+
+  function renderRevisionControls(doc, entries, comparison) {
+    const controls = $('#revision-controls');
+    controls.hidden = entries.length === 0;
+    if (controls.hidden) return;
+    $('#revinfo').textContent = 'Revision ' + comparison.target + ' of ' + doc.revision;
+    const base = $('#base-revision');
+    base.hidden = comparison.base === null;
+    fillRevisionSelect(base, entries, comparison.base);
+    fillRevisionSelect($('#target-revision'), entries, comparison.target);
+    const toggle = $('#diff-toggle');
+    toggle.textContent = comparison.base === null ? 'Show changes' : 'Full document';
+    toggle.disabled = comparison.base === null && comparison.target <= 1;
+    const approval = validApproval(doc, entries);
+    const since = $('#since-approved');
+    since.hidden = !approval || approval.revision >= doc.revision;
+    if (!since.hidden) since.textContent = 'Changes since approved (rev ' + approval.revision + ')';
+  }
+
+  function fillRevisionSelect(select, entries, selected) {
+    select.innerHTML = '';
+    entries.forEach(entry => {
+      const option = document.createElement('option');
+      option.value = String(entry.revision);
+      option.textContent = 'rev ' + entry.revision;
+      option.selected = entry.revision === selected;
+      select.appendChild(option);
+    });
   }
 
   function comparisonText(comparison) {
@@ -1111,16 +1256,17 @@
   $('#approve').onclick = () => {
     if (currentId === null) return;
     const doc = docs[currentId];
-    if (!shownRevisions.has(doc.path)) { flash('Nothing to approve — this revision failed to load'); return; }
-    sendEvent({ type: 'approve', doc: doc.path });
+    const shown = shownRevisions.get(doc.path);
+    if (!shown) { flash('Nothing to approve — this revision failed to load'); return; }
+    sendEvent({ type: 'approve', doc: doc.path, revision: shown.revision, sha256: shown.sha256 });
     markDocSent(doc.path);
     renderSubmitButton();
     showAllCardsSent();
     // The revision on screen, not the latest /docs reported: a newer one may
     // still be loading.
-    approved.set(doc.path, shownRevisions.get(doc.path));
+    approvals.set(doc.path, shown);
     renderSidebar();
-    renderHeader(doc, currentViewFor(doc.path));
+    refreshHeader();
     flash('Approved');
   };
 

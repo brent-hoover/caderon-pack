@@ -9,3 +9,10 @@ A Gherkin step change is marked inside its scenario
 A plain-text doc shows changed lines
 Identical revisions show no change marking
 A code fence change is marked per line
+A newly revised doc opens in diff view against the previous revision
+The operator switches from the diff to the full revised doc
+The operator switches from the full revised doc back to the diff
+The operator compares any two revisions
+The operator views changes since their approval
+A doc with only one revision has no diff
+Choosing a base revision newer than the target is rejected

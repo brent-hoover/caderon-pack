@@ -47,7 +47,8 @@ body {
   display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1.25rem;
   border-bottom: 1px solid var(--border); background: var(--bg2);
 }
-#docheader { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#docheader { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 8rem; }
+#header button { white-space: nowrap; }
 #header .spacer { flex: 1; }
 .status { font-size: 0.75rem; color: var(--status-color); white-space: nowrap; }
 .status::before { content: "●"; margin-right: 0.3em; }
@@ -129,7 +130,18 @@ body {
 #doc .gl-tag .tag { display: inline-block; font-size: 0.75rem; padding: 0 0.45rem; margin-right: 0.3rem; border: 1px solid var(--border); border-radius: 999px; color: var(--fg2); }
 #doc .gherkin-table { font-size: 0.85rem; margin-top: 0.25rem; margin-bottom: 0.25rem; }
 /* diff view: GitHub rich-diff colours */
-#diffinfo { font-size: 0.8rem; color: var(--fg2); white-space: nowrap; }
+#diffinfo, #revinfo { font-size: 0.8rem; color: var(--fg2); white-space: nowrap; }
+#revision-controls {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 1.25rem;
+  border-bottom: 1px solid var(--border); background: var(--bg);
+}
+#revision-controls[hidden] { display: none; }
+#revision-controls button { white-space: nowrap; }
+#revision-controls select, #revision-controls button {
+  border: 1px solid var(--border); color: var(--fg); background: var(--bg); border-radius: 6px;
+  padding: 0.2rem 0.5rem; font-size: 0.8rem;
+}
+#revision-controls button:disabled { color: var(--fg2); opacity: 0.6; }
 #doc .d-added { background: rgba(46, 160, 67, 0.15); box-shadow: inset 3px 0 0 var(--ok); }
 #doc .d-removed { background: rgba(248, 81, 73, 0.15); box-shadow: inset 3px 0 0 var(--err); }
 #doc div.d-added, #doc div.d-removed, #doc li.d-added, #doc li.d-removed { padding-left: 0.75rem; }
@@ -169,13 +181,20 @@ body {
 <main id="main">
   <header id="header">
     <span id="docheader">Loading…</span>
-    <span id="diffinfo"></span>
     <span class="spacer"></span>
     <span class="status">Connecting…</span>
     <button id="view-toggle" hidden>Source</button>
     <button id="submit-comments" disabled>Submit comments (0)</button>
     <button id="approve">Approve</button>
   </header>
+  <div id="revision-controls" hidden>
+    <span id="revinfo"></span>
+    <select id="base-revision" title="Compare from"></select>
+    <select id="target-revision" title="Show revision"></select>
+    <button id="diff-toggle">Show changes</button>
+    <button id="since-approved" hidden></button>
+    <span id="diffinfo"></span>
+  </div>
   <section id="doc"><p class="empty">No documents yet — the agent will add some.</p></section>
   <div id="doc-comments"></div>
   <footer id="footer">
