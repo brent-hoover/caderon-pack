@@ -24,6 +24,7 @@ const PAIRING_SIMILARITY = 0.3;
 // Elements with no closing tag, so they never open a container.
 const VOID_ELEMENTS = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'];
 const TAG_PATTERN = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*?(\/?)>/g;
+const HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/g;
 
 // marked splits raw HTML at blank lines, so a container such as
 // <details>…markdown…</details> arrives as an opening html token, markdown
@@ -56,10 +57,11 @@ function mergedHtmlBlock(tokens, render) {
     text: render.blocks(clone(tokens)) };
 }
 
-// Opening tags minus closing tags, ignoring void and self-closed elements.
+// Opening tags minus closing tags, ignoring void and self-closed elements
+// and anything inside an HTML comment.
 function tagBalance(html) {
   let balance = 0;
-  for (const match of html.matchAll(TAG_PATTERN)) {
+  for (const match of html.replace(HTML_COMMENT_PATTERN, '').matchAll(TAG_PATTERN)) {
     const [, closing, name, selfClosing] = match;
     if (VOID_ELEMENTS.includes(name.toLowerCase()) || selfClosing) continue;
     balance += closing ? -1 : 1;

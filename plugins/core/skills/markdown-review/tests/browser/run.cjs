@@ -31,6 +31,10 @@ const CHECKS = [
   { name: 'A plain-text doc shows changed lines', run: checkPlainTextChange },
   { name: 'Identical revisions show no change marking', run: checkIdenticalRevisions },
   { name: 'A code fence change is marked per line', run: checkCodeLineChange },
+  { name: 'a removed table column is marked', run: checkRemovedTableColumn },
+  { name: 'a task item keeps its checkbox when its text changes', run: checkTaskCheckboxKept },
+  { name: 'a heading level change is marked', run: checkHeadingLevelChange },
+  { name: 'a Gherkin table keeps its cells when a step changes', run: checkGherkinTableKept },
   { name: 'A newly revised doc opens in diff view against the previous revision', run: checkOpensInDiffView },
   { name: 'The operator switches from the diff to the full revised doc', run: checkSwitchToFullDocument },
   { name: 'The operator switches from the full revised doc back to the diff', run: checkSwitchBackToDiff },
@@ -189,6 +193,35 @@ function checkCodeLineChange() {
   withDiff('doc.md', '```\na = 1\nb = 2\n```\n', '```\na = 1\nb = 3\n```\n', () => {
     expectDeep(evaluate(TEXTS_OF('#doc pre del.d-del')), ['2'], 'removed words');
     expectDeep(evaluate(TEXTS_OF('#doc pre ins.d-add')), ['3'], 'added words');
+  });
+}
+
+function checkRemovedTableColumn() {
+  withDiff('doc.md', '| k | v | note |\n|---|---|---|\n| a | 1 | old |\n', '| k | v |\n|---|---|\n| a | 2 |\n', () => {
+    expectDeep(evaluate(TEXTS_OF('#doc th.d-removed, #doc td.d-removed')), ['note', 'old'], 'removed cells');
+  });
+}
+
+function checkTaskCheckboxKept() {
+  withDiff('doc.md', '- [x] Ship\n- [ ] Test\n', '- [x] Ship now\n- [ ] Test\n', () => {
+    expectDeep(evaluate(TEXTS_OF('#doc ins.d-add')), ['now'], 'added words');
+    expectEqual(evaluate('document.querySelectorAll("#doc li input[type=checkbox]").length'), 2, 'checkboxes');
+    expectEqual(evaluate('document.querySelector("#doc li input[type=checkbox]").checked'), true, 'first checkbox checked');
+  });
+}
+
+function checkHeadingLevelChange() {
+  withDiff('doc.md', '# Cache\n\nText.\n', '## Cache\n\nText.\n', () => {
+    expectEqual(evaluate('document.querySelectorAll("#doc .d-removed h1").length'), 1, 'removed h1');
+    expectEqual(evaluate('document.querySelectorAll("#doc .d-added h2").length'), 1, 'added h2');
+  });
+}
+
+function checkGherkinTableKept() {
+  const feature = 'Feature: Login\n\n  Scenario: Users\n    Given these users\n      | name | role |\n      | ann  | admin |\n    Then they log in\n';
+  withDiff('login.feature', feature, feature.replace('they log in', 'they all log in'), () => {
+    expectEqual(evaluate('document.querySelectorAll("#doc .gherkin-table td").length'), 2, 'table body cells');
+    expectDeep(evaluate(TEXTS_OF('#doc ins.d-add')), ['all'], 'added words');
   });
 }
 

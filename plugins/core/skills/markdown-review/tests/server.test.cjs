@@ -491,3 +491,12 @@ test('a revision requested with a stale hash is refused', async () => {
   assert.strictEqual((await get('/doc/' + id + '/rev/1?sha256=' + docs[id].sha256)).status, 200);
   assert.strictEqual((await get('/doc/' + id + '/rev/1?sha256=' + 'f'.repeat(64))).status, 409);
 });
+
+test('a revision file changed after indexing is refused', async () => {
+  const { id } = await servedDoc('tampered.md', FIRST_DRAFT);
+  const docs = await (await get('/docs')).json();
+  fs.writeFileSync(path.join(docsDir, '.revisions', 'tampered.md', '0001.rev'), 'replaced after indexing\n');
+
+  assert.strictEqual((await get('/doc/' + id + '/rev/1?sha256=' + docs[id].sha256)).status, 409);
+});
+

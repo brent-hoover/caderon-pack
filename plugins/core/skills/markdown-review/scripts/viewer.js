@@ -149,7 +149,13 @@
     if (doc.revision === null) {
       return { text: '*' + doc.path + ' has no revisions yet — the agent needs to run serve-doc or revise.*', isLoaded: false };
     }
-    const r = await fetch('/doc/' + doc.id + '/rev/' + doc.revision + '?sha256=' + doc.sha256);
+    let r;
+    try {
+      r = await fetch('/doc/' + doc.id + '/rev/' + doc.revision + '?sha256=' + doc.sha256);
+    } catch (e) {
+      console.error('revision ' + doc.revision + ' of ' + doc.path + ' failed to load: ' + e.message);
+      return { text: '*Failed to load revision ' + doc.revision + ' of ' + doc.path + ' (network error)*', isLoaded: false };
+    }
     if (!r.ok) return { text: '*Failed to load revision ' + doc.revision + ' of ' + doc.path + ' (' + r.status + ')*', isLoaded: false };
     const text = await r.text();
     textCache.set(key, text);
@@ -417,15 +423,25 @@
 
   let headerState = null; // the arguments of the last renderHeader, for refreshes
 
+  let renderGeneration = 0; // bumped per renderDoc; a superseded render discards its result
+
   async function renderDoc(id, opts) {
     const doc = docs[id];
     if (!doc) return;
-    const pane = $('#doc');
-    const scrollTop = opts.preserveScroll ? pane.scrollTop : 0;
-    closePopover();
+    const generation = ++renderGeneration;
+    const view = currentViewFor(doc.path);
+    // Markdown and Gherkin source views show the revision itself, never a diff.
+    const isDiffable = !(view === 'source' && TOGGLEABLE_EXTENSIONS.includes(extensionOf(doc.path)));
     const entries = await revisionEntriesOrNone(doc);
     const comparison = comparisonFor(doc, entries);
     const target = await revisionText(doc, entries, comparison.target);
+    const base = isDiffable && comparison.base !== null ? await revisionText(doc, entries, comparison.base) : null;
+    // Everything below is synchronous: what is drawn, and what Approve would
+    // approve, change together — and only for the newest render.
+    if (generation !== renderGeneration) return;
+    const pane = $('#doc');
+    const scrollTop = opts.preserveScroll ? pane.scrollTop : 0;
+    closePopover();
     // A failed load shows an error, not the revision, so it can't be approved.
     if (target.isLoaded) {
       shownRevisions.set(doc.path, { revision: comparison.target, sha256: entrySha256(doc, entries, comparison.target) });
@@ -433,10 +449,6 @@
     } else {
       shownRevisions.delete(doc.path);
     }
-    const view = currentViewFor(doc.path);
-    // Markdown and Gherkin source views show the revision itself, never a diff.
-    const isDiffable = !(view === 'source' && TOGGLEABLE_EXTENSIONS.includes(extensionOf(doc.path)));
-    const base = isDiffable && comparison.base !== null ? await revisionText(doc, entries, comparison.base) : null;
     let anchors;
     let shownComparison = null;
     if (base && base.isLoaded && target.isLoaded) {
@@ -807,6 +819,8 @@
   // A changed paragraph or heading rebuilt from its word runs, or null if the
   // markers changed how it renders (checked against both unmarked revisions).
   function rebuiltBlockElement(node) {
+    // A level change has no word to mark: show the old and new heading.
+    if (node.kind === 'heading' && node.base.depth !== node.target.depth) return null;
     const prefix = node.kind === 'heading' ? '#'.repeat(node.target.depth) + ' ' : '';
     const el = document.createElement('div');
     el.innerHTML = marked.parse(prefix + wordsMarkdown(node.words));
@@ -864,7 +878,7 @@
     const targetLi = itemElement(node.target, item.target, null);
     if (item.words) {
       const li = document.createElement('li');
-      li.innerHTML = marked.parseInline(wordsMarkdown(item.words));
+      li.innerHTML = taskCheckbox(item.target) + marked.parseInline(wordsMarkdown(item.words));
       if (rendersLike(li, baseLi, targetLi)) return [li];
     }
     baseLi.classList.add('d-removed');
@@ -872,38 +886,53 @@
     return [baseLi, targetLi];
   }
 
+  // marked keeps a task item's checkbox outside its words; a rebuilt item puts
+  // it back. (A checked-state change is never rebuilt: it's a replaced item.)
+  function taskCheckbox(item) {
+    if (!item.task) return '';
+    return '<input type="checkbox" disabled' + (item.checked ? ' checked' : '') + '> ';
+  }
+
   function tableDiffElement(node) {
+    const align = node.target.align;
     const table = document.createElement('table');
     const head = table.createTHead().insertRow();
-    node.header.forEach(cell => head.appendChild(cellElement('th', cell)));
+    node.header.forEach((cell, i) => head.appendChild(cellElement('th', cell, align[i])));
     const body = table.createTBody();
     node.rows.forEach(row => {
       const tr = body.insertRow();
       if (row.op === 'changed') {
-        row.cells.forEach(cell => tr.appendChild(cellElement('td', cell)));
+        row.cells.forEach((cell, i) => tr.appendChild(cellElement('td', cell, align[i])));
         return;
       }
       const cells = row.op === 'removed' ? row.base : row.target;
       if (row.op !== 'equal') tr.classList.add(row.op === 'added' ? 'd-added' : 'd-removed');
-      cells.forEach(cell => tr.appendChild(inlineCell('td', cell.tokens)));
+      cells.forEach((cell, i) => tr.appendChild(inlineCell('td', cell.tokens, align[i])));
     });
     return table;
   }
 
-  function cellElement(tag, cell) {
-    if (cell.op === 'equal' || cell.op === 'added') return inlineCell(tag, cell.target.tokens);
-    if (cell.op === 'removed') return inlineCell(tag, cell.base.tokens);
-    const el = document.createElement(tag);
+  // A cell of a changed row or of the header: added and removed cells (a column
+  // gained or dropped) are marked like added and removed blocks.
+  function cellElement(tag, cell, align) {
+    if (cell.op === 'equal') return inlineCell(tag, cell.target.tokens, align);
+    if (cell.op === 'added' || cell.op === 'removed') {
+      const el = inlineCell(tag, (cell.op === 'added' ? cell.target : cell.base).tokens, align);
+      el.classList.add(cell.op === 'added' ? 'd-added' : 'd-removed');
+      return el;
+    }
+    const el = inlineCell(tag, [], align);
     el.innerHTML = marked.parseInline(wordsMarkdown(cell.words));
-    if (rendersLike(el, inlineCell(tag, cell.base.tokens), inlineCell(tag, cell.target.tokens))) return el;
+    if (rendersLike(el, inlineCell(tag, cell.base.tokens, align), inlineCell(tag, cell.target.tokens, align))) return el;
     el.innerHTML = '<del class="d-del">' + MARKED_RENDER.inline(structuredClone(cell.base.tokens)) + '</del>' +
       '<ins class="d-add">' + MARKED_RENDER.inline(structuredClone(cell.target.tokens)) + '</ins>';
     return el;
   }
 
-  function inlineCell(tag, tokens) {
+  function inlineCell(tag, tokens, align) {
     const el = document.createElement(tag);
     el.innerHTML = MARKED_RENDER.inline(structuredClone(tokens));
+    if (align) el.style.textAlign = align;
     return el;
   }
 
@@ -963,13 +992,61 @@
     const block = node.op === 'removed' ? node.base : node.target;
     const el = gherkinBlockElement(block);
     if (node.op === 'changed') {
-      node.lines.forEach(line => el.appendChild(gherkinDiffLine(node, line)));
+      appendGherkinDiffLines(el, node);
     } else {
       appendGherkinLines(el, block.lines);
       if (node.op !== 'equal') el.classList.add(node.op === 'added' ? 'd-added' : 'd-removed');
     }
     markGherkinHeader(el);
     return el;
+  }
+
+  // Like appendGherkinLines: consecutive table lines become one table, every
+  // other line one row div, each keeping its diff marking.
+  function appendGherkinDiffLines(container, node) {
+    let tableLines = [];
+    const flushTable = () => {
+      if (tableLines.length > 0) container.appendChild(gherkinDiffTable(node, tableLines));
+      tableLines = [];
+    };
+    node.lines.forEach(line => {
+      if (gherkinLineOf(node, line).kind === 'table') { tableLines.push(line); return; }
+      flushTable();
+      container.appendChild(gherkinDiffLine(node, line));
+    });
+    flushTable();
+  }
+
+  // The parsed Gherkin line a diff line came from (the target's, unless removed).
+  function gherkinLineOf(node, line) {
+    return line.op === 'removed' ? node.base.lines[line.baseIndex] : node.target.lines[line.targetIndex];
+  }
+
+  // First row is the header row, as in gherkinTable. A changed row marks the
+  // cells whose text changed.
+  function gherkinDiffTable(node, lines) {
+    const table = document.createElement('table');
+    table.className = 'gherkin-table';
+    lines.forEach((line, rowIndex) => {
+      const row = document.createElement('tr');
+      const tag = rowIndex === 0 ? 'th' : 'td';
+      const targetCells = line.op === 'removed' ? [] : splitTableRow(node.target.lines[line.targetIndex].text);
+      const baseCells = line.op === 'added' ? [] : splitTableRow(node.base.lines[line.baseIndex].text);
+      const cells = line.op === 'removed' ? baseCells : targetCells;
+      cells.forEach((text, i) => {
+        const cell = document.createElement(tag);
+        if (line.op === 'changed' && baseCells[i] !== text) {
+          cell.appendChild(wordRunElement({ op: 'removed', text: baseCells[i] || '' }));
+          cell.appendChild(wordRunElement({ op: 'added', text: text }));
+        } else {
+          cell.textContent = text;
+        }
+        row.appendChild(cell);
+      });
+      if (line.op === 'added' || line.op === 'removed') row.classList.add(line.op === 'added' ? 'd-added' : 'd-removed');
+      table.appendChild(row);
+    });
+    return table;
   }
 
   // Equal, added and removed lines keep their Gherkin styling; a changed line

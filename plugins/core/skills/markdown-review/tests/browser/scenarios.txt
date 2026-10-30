@@ -9,6 +9,10 @@ A Gherkin step change is marked inside its scenario
 A plain-text doc shows changed lines
 Identical revisions show no change marking
 A code fence change is marked per line
+a removed table column is marked
+a task item keeps its checkbox when its text changes
+a heading level change is marked
+a Gherkin table keeps its cells when a step changes
 A newly revised doc opens in diff view against the previous revision
 The operator switches from the diff to the full revised doc
 The operator switches from the full revised doc back to the diff

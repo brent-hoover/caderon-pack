@@ -187,6 +187,13 @@ test('an html container spanning markdown is one block', () => {
   assert.match(blocks[0].text, /<details><summary>More<\/summary>[\s\S]*<li>hidden item<\/li>[\s\S]*<\/details>/);
 });
 
+test('a closing tag inside an html comment does not close a container', () => {
+  const blocks = blocksOf('<details><summary>More</summary>\n\n<!-- </details> -->\n\n- hidden item\n\n</details>\n\nAfter.\n');
+
+  assert.deepStrictEqual(blocks.map(b => b.type), ['html', 'paragraph']);
+  assert.match(blocks[0].text, /<li>hidden item<\/li>[\s\S]*<\/details>/);
+});
+
 const LOGIN_FEATURE = 'Feature: Login\n\n' +
   '  Scenario: Good password\n    Given a user\n    Then the user sees the dashboard\n\n' +
   '  Scenario: Bad password\n    Then an error shows\n';
