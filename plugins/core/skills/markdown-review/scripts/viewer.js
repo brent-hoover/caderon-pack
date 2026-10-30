@@ -135,19 +135,21 @@
     return doc.path + '#' + doc.revision + ':' + doc.sha256;
   }
 
-  // Fetched by revision number, so the text always matches the revision
-  // /docs reported, even if another revise lands in between.
+  // Fetched by revision number and hash, so the text always is the revision
+  // /docs reported; the server answers 409 if history changed in between.
+  // Only successful loads are cached, so a failed one retries on the next
+  // revision notice.
   async function docText(doc) {
     const key = revisionKey(doc);
-    if (!textCache.has(key)) {
-      if (doc.revision === null) {
-        textCache.set(key, '*' + doc.path + ' has no revisions yet — the agent needs to run serve-doc or revise.*');
-      } else {
-        const r = await fetch('/doc/' + doc.id + '/rev/' + doc.revision);
-        textCache.set(key, r.ok ? await r.text() : '*Failed to load revision ' + doc.revision + ' of ' + doc.path + '*');
-      }
+    if (textCache.has(key)) return textCache.get(key);
+    if (doc.revision === null) {
+      return '*' + doc.path + ' has no revisions yet — the agent needs to run serve-doc or revise.*';
     }
-    return textCache.get(key);
+    const r = await fetch('/doc/' + doc.id + '/rev/' + doc.revision + '?sha256=' + doc.sha256);
+    if (!r.ok) return '*Failed to load revision ' + doc.revision + ' of ' + doc.path + ' (' + r.status + ')*';
+    const text = await r.text();
+    textCache.set(key, text);
+    return text;
   }
 
   // Markdown: first '# ' heading. Gherkin: the Feature name ('#' lines there
@@ -420,7 +422,9 @@
     const scrollTop = opts.preserveScroll ? pane.scrollTop : 0;
     closePopover();
     const source = await docText(doc);
-    shownRevisions.set(doc.path, revisionKey(doc));
+    // A failed load shows an error, not the revision, so it can't be approved.
+    if (textCache.has(revisionKey(doc))) shownRevisions.set(doc.path, revisionKey(doc));
+    else shownRevisions.delete(doc.path);
     const view = currentViewFor(doc.path);
     let anchors;
     if (view === 'source') anchors = renderSource(pane, source);
@@ -765,6 +769,7 @@
   $('#approve').onclick = () => {
     if (currentId === null) return;
     const doc = docs[currentId];
+    if (!shownRevisions.has(doc.path)) { flash('Nothing to approve — this revision failed to load'); return; }
     sendEvent({ type: 'approve', doc: doc.path });
     markDocSent(doc.path);
     renderSubmitButton();

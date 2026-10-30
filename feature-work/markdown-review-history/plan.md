@@ -306,7 +306,7 @@ steps 8–10 only add to it.
 
 **Verify:**
 
-- `T`: 107 pass, 0 fail.
+- `T`: 108 pass, 0 fail.
 - `tests/browser/run.sh --smoke` prints `ok smoke` and exits 0.
 - Manually, in the operator's browser: comments on an existing doc still attach to the right
   blocks.
@@ -353,7 +353,7 @@ Extend `run.sh` with one browser check per `rich-diff` scenario, named after it.
 **Verify:**
 
 - `tests/browser/run.sh` prints `ok <name>` for all 9 and `ok smoke`, and exits 0.
-- `T`: 107 pass, 0 fail.
+- `T`: 108 pass, 0 fail.
 
 ### 9. Revision navigation
 
@@ -389,7 +389,7 @@ file before the page loads.
 **Verify:**
 
 - `tests/browser/run.sh` prints `ok` for those 7 plus every earlier check, and exits 0.
-- `T`: 107 pass, 0 fail.
+- `T`: 108 pass, 0 fail.
 
 ### 10. Revision-aware feedback and carried-forward comments
 
@@ -429,7 +429,7 @@ Extend `run.sh`:
 **Verify:**
 
 - `tests/browser/run.sh` prints `ok` for those 9 plus every earlier check, and exits 0.
-- `T`: 107 pass, 0 fail.
+- `T`: 108 pass, 0 fail.
 
 ### 11. Skill docs, version bump, traceability
 
@@ -473,7 +473,7 @@ it makes scenario traceability a test.
 
 - `S` with the 3 scenario names, the `DESIGN.md` check and `every scenario has a test`: all show
   `✔`.
-- `T`: 112 pass, 0 fail.
+- `T`: 113 pass, 0 fail.
 - `M` exits 0.
 
 ### 12. End-to-end dogfood
@@ -596,3 +596,4 @@ All 38 scenarios are covered, with no gaps.
   4539/4540: checkbox item, escaped-pipe row, history recreated within one poll, `sha256` in
   `/docs`. The viewer now fetches text by revision and approves the revision on screen, part of
   step 7's text-cache change, done early.
+- 2026-10-30: Totals from step 7 on +1: the stale-hash 409 test (roborev job 4548).

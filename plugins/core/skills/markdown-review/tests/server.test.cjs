@@ -481,3 +481,11 @@ test('/docs carries the latest revision hash', async () => {
   assert.match(docs[id].sha256, /^[0-9a-f]{64}$/);
 });
 
+
+test('a revision requested with a stale hash is refused', async () => {
+  const { id } = await servedDoc('stale-hash.md', FIRST_DRAFT);
+  const docs = await (await get('/docs')).json();
+
+  assert.strictEqual((await get('/doc/' + id + '/rev/1?sha256=' + docs[id].sha256)).status, 200);
+  assert.strictEqual((await get('/doc/' + id + '/rev/1?sha256=' + 'f'.repeat(64))).status, 409);
+});

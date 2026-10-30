@@ -287,11 +287,20 @@ function notFound(res, message) {
 
 // The index is authoritative: a revision file without its index line was left
 // by a revise that crashed before finishing, and is not a revision.
-function serveRevision(res, docPath, revision) {
+// `expectedSha256` (optional) pins the request to one revision identity:
+// recreated history reuses revision numbers, so the viewer asks for the hash
+// /docs gave it and gets 409 if the history has changed underneath it.
+function serveRevision(res, docPath, revision, expectedSha256) {
   if (!docPath || revision < 1) { notFound(res); return; }
   let body;
   try {
-    if (!readIndex(docPath).some(entry => entry.revision === revision)) { notFound(res); return; }
+    const entry = readIndex(docPath).find(e => e.revision === revision);
+    if (!entry) { notFound(res); return; }
+    if (expectedSha256 && entry.sha256 !== expectedSha256) {
+      res.writeHead(409, securityHeaders({ 'Content-Type': 'text/plain; charset=utf-8' }));
+      res.end('revision ' + revision + ' of ' + docPath + ' has changed — refetch /docs');
+      return;
+    }
     body = readRevision(docPath, revision);
   } catch (e) {
     // A missing revision is an ordinary 404; anything else (a symlink, an
@@ -372,9 +381,13 @@ function pathnameOf(url) {
 }
 
 function queryKey(url) {
+  return queryParam(url, 'key');
+}
+
+function queryParam(url, name) {
   const q = url.indexOf('?');
   if (q < 0) return null;
-  return new URLSearchParams(url.slice(q + 1)).get('key');
+  return new URLSearchParams(url.slice(q + 1)).get(name);
 }
 
 function securityHeaders(headers = {}) {
@@ -432,7 +445,7 @@ function handleRequest(req, res) {
     res.end(JSON.stringify(recordedEvents()));
   } else if (REVISION_ROUTE.test(pathname)) {
     const [, idStr, revisionStr] = pathname.match(REVISION_ROUTE);
-    serveRevision(res, docById(idStr), Number(revisionStr));
+    serveRevision(res, docById(idStr), Number(revisionStr), queryParam(req.url, 'sha256'));
   } else if (pathname.startsWith('/revisions/')) {
     const docPath = docById(pathname.slice(11));
     if (!docPath) { notFound(res); return; }
