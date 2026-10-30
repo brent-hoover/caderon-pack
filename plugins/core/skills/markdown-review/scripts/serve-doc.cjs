@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// Register markdown docs with a running md-review session.
+// Register docs with a running md-review session, recording each one's
+// current content as a revision.
 // Usage: serve-doc.cjs [--session-dir <dir>] <path>...
 const fs = require('fs');
 const path = require('path');
+const { recordRevision } = require('./revisions.cjs');
 
 function fail(msg) {
   process.stderr.write('serve-doc: ' + msg + '\n');
@@ -51,6 +53,18 @@ for (const p of docPaths) {
   try { stat = fs.statSync(abs); } catch (e) { fail('no such file: ' + abs); }
   if (!stat.isFile()) fail('not a file: ' + abs);
   resolved.push(abs);
+}
+
+// Revision first, manifest second: the viewer fetches a doc as soon as it
+// appears in the manifest, and a served doc must already have a revision.
+for (const abs of resolved) {
+  let outcome;
+  try {
+    outcome = recordRevision(abs);
+  } catch (e) {
+    fail(e.message);
+  }
+  console.log(JSON.stringify({ type: outcome.status, doc: abs, revision: outcome.revision }));
 }
 
 const manifestFile = path.join(sessionDir, 'manifest.json');
