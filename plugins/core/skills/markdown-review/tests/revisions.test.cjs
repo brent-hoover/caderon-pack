@@ -172,3 +172,12 @@ test('a symlinked revision file is refused', () => {
 
   assert.throws(() => readRevision(doc, 1), /symlink/);
 });
+
+test('a symlinked lock is refused without reading its target', () => {
+  const doc = tempDoc('# Plan\n');
+  recordRevision(doc);
+  fs.writeFileSync(doc, '# Plan\n\nChanged.\n');
+  fs.symlinkSync('/dev/zero', path.join(revisionDir(doc), 'lock'));
+
+  assert.throws(() => recordRevision(doc), /symlink/);
+});

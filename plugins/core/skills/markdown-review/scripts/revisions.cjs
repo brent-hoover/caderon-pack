@@ -22,6 +22,7 @@ const REVISION_NUMBER_WIDTH = 4;
 const LOCK_RETRY_MS = 50;
 const LOCK_TIMEOUT_MS = 5000;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
+const LOCK_PID_MAX_BYTES = 32; // a pid is at most a few digits
 
 function revisionDir(docPath) {
   return path.join(path.dirname(docPath), REVISIONS_DIR_NAME, path.basename(docPath));
@@ -129,15 +130,25 @@ function acquireLock(dir) {
 }
 
 // null while the holder is between creating the lock and writing its pid.
+// O_NOFOLLOW and a bounded read: a lock committed as a symlink (say to
+// /dev/zero) must neither be followed nor read without limit.
 function readLockHolder(lockPath) {
-  let text;
+  let fd;
   try {
-    text = fs.readFileSync(lockPath, 'utf-8').trim();
+    fd = fs.openSync(lockPath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
   } catch (e) {
     if (e.code === 'ENOENT') return null;
+    if (e.code === 'ELOOP') throw new Error('refusing to follow symlink in revision history: ' + lockPath);
     throw e;
   }
-  const pid = Number(text);
+  const buffer = Buffer.alloc(LOCK_PID_MAX_BYTES);
+  let bytesRead;
+  try {
+    bytesRead = fs.readSync(fd, buffer, 0, LOCK_PID_MAX_BYTES, 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const pid = Number(buffer.toString('utf-8', 0, bytesRead).trim());
   return Number.isInteger(pid) && pid > 0 ? pid : null;
 }
 
