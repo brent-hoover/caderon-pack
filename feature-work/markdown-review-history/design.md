@@ -185,8 +185,8 @@ because a plain `require` returns nothing under the repo's `"type": "module"` (v
 
   | Token type | Descends to |
   |---|---|
-  | `list` | items via `diffSequence` on item raw, then a changed item's text to words |
-  | `table` | the header cells by position, the rows via `diffSequence` on row text, then the cells of a changed row by position |
+  | `list` | items via `diffSequence` using rendered-output equality, then a changed item's text to words |
+  | `table` | the header cells by position, the rows via `diffSequence` using rendered-output equality, then the cells of a changed row by position |
   | `code` | lines via `diffSequence`, then the words of a changed line |
   | `paragraph`, `heading` | words |
   | `blockquote` | `diffMarkdown` on its `token.tokens`, which are block tokens such as paragraphs |
@@ -483,3 +483,5 @@ and revise as a CLI.
 - 2026-10-30: Applied roborev job 4522.
   - Rendered-output equality applies to nested units and renders a cloned token.
   - Removal placement is keyed to a `removed` node actually being in the shown diff.
+- 2026-10-30: Applied roborev job 4524: the descent table now uses rendered-output equality for list
+  items and table rows, matching the equality rule.
