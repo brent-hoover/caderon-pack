@@ -393,7 +393,7 @@ file before the page loads.
 
 ### 10. Revision-aware feedback and carried-forward comments
 
-**Status:** ☐
+**Status:** ☑
 
 **What:** In `viewer.js`:
 
@@ -608,3 +608,6 @@ All 38 scenarios are covered, with no gaps.
   under the header: in the header, they squeezed the doc title out (seen in a screenshot). The
   step 8 checks now open the viewer before revising, because a fresh browser opens on the full
   latest revision.
+- 2026-10-30: Step 10 done. 31 browser checks pass: all viewer-side scenarios, plus regressions
+  from the roborev rounds. Comments seeded through the events file stand in for comments made in an
+  earlier session, and the feedback checks run the real `wait-for-feedback.cjs`.

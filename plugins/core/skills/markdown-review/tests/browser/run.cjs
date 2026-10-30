@@ -41,7 +41,16 @@ const CHECKS = [
   { name: 'The operator compares any two revisions', run: checkCompareAnyTwo },
   { name: 'The operator views changes since their approval', run: checkChangesSinceApproval },
   { name: 'A doc with only one revision has no diff', run: checkSingleRevision },
-  { name: 'Choosing a base revision newer than the target is rejected', run: checkInvertedRangeRejected }
+  { name: 'Choosing a base revision newer than the target is rejected', run: checkInvertedRangeRejected },
+  { name: 'A comment on changed text is shown as addressed', run: checkCommentAddressed },
+  { name: 'A comment on unchanged text is shown as still open', run: checkCommentOpen },
+  { name: 'A comment on removed text is shown as addressed by removal', run: checkCommentRemoved },
+  { name: 'A comment from an older viewer without a revision is treated as revision 1', run: checkCommentWithoutRevision },
+  { name: 'A comment whose anchor cannot be found in its own revision is shown at doc level', run: checkCommentUnanchored },
+  { name: 'An approval records the revision it approves', run: checkApprovalRecordsRevision },
+  { name: 'A comment records the revision it was made on', run: checkCommentRecordsRevision },
+  { name: 'An approval of an older revision is marked stale after a revise', run: checkStaleApproval },
+  { name: 'Approving while viewing an older revision is not allowed', run: checkApproveOlderRevisionDisabled }
 ];
 
 function main() {
@@ -330,6 +339,127 @@ function checkInvertedRangeRejected() {
   });
 }
 
+// ===== comments carried forward =====
+
+const COMMENTED = 'The cache expires after 30 seconds.';
+const CACHE_REVISION_1 = '# Cache\n\n' + COMMENTED + '\n\nEntries are evicted LRU.\n';
+const COMMENT_CARDS = 'Array.from(document.querySelectorAll("#doc .comment-cards")).map(cards => ({ ' +
+  'block: cards.previousElementSibling.textContent.trim(), ' +
+  'statuses: Array.from(cards.querySelectorAll(".status-badge")).map(badge => badge.textContent) }))';
+
+// The operator commented "too short" on the 30-seconds paragraph of revision
+// 1 and submitted it; the agent then revised the doc to `revision2`.
+function withCarriedComment(revision2, commentFields, inspect) {
+  const review = startReview({ 'cache.md': CACHE_REVISION_1 });
+  try {
+    const doc = review.docPath('cache.md');
+    review.appendEvent(Object.assign({ type: 'comment', doc: doc, view: 'rendered', revision: 1, blockIndex: 1,
+      quote: COMMENTED, selection: null, comment: 'too short', timestamp: Date.now() }, commentFields));
+    review.appendEvent({ type: 'submit', doc: doc, timestamp: Date.now() });
+    review.edit('cache.md', revision2);
+    review.revise('cache.md');
+    review.open();
+    review.waitFor('document.querySelector("#revinfo").textContent === "Revision 2 of 2"');
+    inspect(review);
+  } finally {
+    review.stop();
+  }
+}
+
+function checkCommentAddressed() {
+  withCarriedComment(CACHE_REVISION_1.replace('30 seconds', '60 seconds'), {}, () => {
+    expectDeep(evaluate(COMMENT_CARDS), [{ block: 'The cache expires after 60 seconds.', statuses: ['addressed in revision 2'] }], 'comment cards');
+  });
+}
+
+function checkCommentOpen() {
+  withCarriedComment(CACHE_REVISION_1.replace('evicted LRU', 'evicted FIFO'), {}, () => {
+    expectDeep(evaluate(COMMENT_CARDS), [{ block: COMMENTED, statuses: ['open'] }], 'comment cards');
+  });
+}
+
+function checkCommentRemoved() {
+  withCarriedComment(CACHE_REVISION_1.replace(COMMENTED + '\n\n', ''), {}, () => {
+    expectDeep(evaluate(COMMENT_CARDS), [{ block: 'Cache', statuses: ['addressed in revision 2 (text removed)'] }], 'comment cards');
+  });
+}
+
+function checkCommentWithoutRevision() {
+  withCarriedComment(CACHE_REVISION_1.replace('30 seconds', '60 seconds'), { revision: undefined }, () => {
+    expectDeep(evaluate(COMMENT_CARDS), [{ block: 'The cache expires after 60 seconds.', statuses: ['addressed in revision 2'] }], 'comment cards');
+  });
+}
+
+function checkCommentUnanchored() {
+  withCarriedComment(CACHE_REVISION_1.replace('30 seconds', '60 seconds'), { quote: 'Text that was never in revision 1.' }, () => {
+    expectDeep(evaluate(COMMENT_CARDS), [], 'inline comment cards');
+    expectEqual(evaluate('document.querySelector("#doc-comments").textContent.includes("Anchor not found")'), true, 'doc-level note');
+  });
+}
+
+// ===== feedback carries the revision =====
+
+// plan.md with revisions 1 and 2, opened on revision 2.
+function withTwoRevisions(inspect) {
+  const review = startReview({ 'plan.md': PLAN_REVISIONS[0] });
+  try {
+    review.edit('plan.md', PLAN_REVISIONS[1]);
+    review.revise('plan.md');
+    review.open();
+    review.waitFor('document.querySelector("#revinfo").textContent === "Revision 2 of 2"');
+    inspect(review);
+  } finally {
+    review.stop();
+  }
+}
+
+function checkApprovalRecordsRevision() {
+  withTwoRevisions(review => {
+    browser(['click', '#approve']);
+    review.waitForEvent(e => e.type === 'approve');
+    const delivered = review.collectFeedback();
+    expectEqual(delivered.status, 0, 'watcher exit code');
+    const approval = delivered.events.find(e => e.type === 'approve');
+    expectEqual(approval && approval.revision, 2, 'approved revision');
+  });
+}
+
+function checkCommentRecordsRevision() {
+  withTwoRevisions(review => {
+    browser(['click', '#doc .block:nth-child(2)']);
+    browser(['fill', '.popover textarea', 'clarify']);
+    browser(['click', '.popover .save']);
+    browser(['click', '#submit-comments']);
+    review.waitForEvent(e => e.type === 'submit');
+    const delivered = review.collectFeedback();
+    expectEqual(delivered.status, 0, 'watcher exit code');
+    const comment = delivered.events.find(e => e.type === 'comment');
+    expectEqual(comment && comment.revision, 2, 'comment revision');
+    expectDeep(['view', 'blockIndex', 'quote', 'selection'].filter(key => !(key in comment)), [], 'missing fields');
+  });
+}
+
+function checkStaleApproval() {
+  withTwoRevisions(review => {
+    browser(['click', '#approve']);
+    review.waitFor('document.querySelectorAll("#doclist .check").length === 1');
+    review.edit('plan.md', PLAN_REVISIONS[2]);
+    review.revise('plan.md');
+    review.waitFor('document.querySelector("#revinfo").textContent === "Revision 3 of 3"');
+    expectEqual(evaluate('document.querySelectorAll("#doclist .check").length'), 0, 'sidebar approval marks');
+    expectEqual(evaluate('document.querySelector("#since-approved").textContent'), 'Changes since approved (rev 2)', 'since-approved control');
+  });
+}
+
+function checkApproveOlderRevisionDisabled() {
+  withTwoRevisions(review => {
+    chooseRevision('target-revision', 1);
+    review.waitFor('document.querySelector("#revinfo").textContent === "Revision 1 of 2"');
+    expectEqual(evaluate('document.querySelector("#approve").disabled'), true, 'Approve disabled');
+    expectEqual(evaluate('document.querySelector("#approve").title'), 'Approve the latest revision', 'Approve hint');
+  });
+}
+
 // ===== review session =====
 
 // A temp project with the given docs, a running server, and every doc served.
@@ -351,6 +481,13 @@ function startReview(docs) {
     indexEntries: (name) => fs.readFileSync(path.join(root, '.revisions', name, 'index.jsonl'), 'utf-8')
       .split('\n').filter(Boolean).map(line => JSON.parse(line)),
     appendEvent: (event) => fs.appendFileSync(eventsFile, JSON.stringify(event) + '\n'),
+    // What the agent's watcher delivers: it exits as soon as there is a
+    // submitted batch or an approval it hasn't delivered yet.
+    collectFeedback: () => {
+      const result = spawnSync('node', [path.join(SCRIPTS, 'wait-for-feedback.cjs'), '--session-dir', info.session_dir],
+        { encoding: 'utf-8', timeout: WAIT_TIMEOUT_MS });
+      return { status: result.status, events: result.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line)) };
+    },
     edit: (name, content) => fs.writeFileSync(docPath(name), content),
     revise: (name) => node('revise.cjs', ['--session-dir', info.session_dir, docPath(name)]),
     waitFor: (expression) => waitUntil(() => evaluate(expression) === true, expression),

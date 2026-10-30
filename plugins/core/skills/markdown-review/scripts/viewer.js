@@ -24,7 +24,7 @@
   // GET /events on load; a comment is sent once a submit or approve on its own
   // doc follows it.
   let savedComments = [];
-  let currentOrphans = [];        // comment events of the current doc/view whose text is gone
+  let currentOrphans = [];        // [{event, note, status}]: comments of the current doc/view shown at doc level
   let renderedAnchors = [];       // [{el, index, quote}] of the doc on screen
   const viewChoice = new Map();   // path -> view the operator toggled to (in-memory; resets on reload)
   const approvals = new Map();    // path -> {revision, sha256} the operator approved
@@ -325,23 +325,67 @@
     return savedComments.filter(saved => saved.event.doc === docPath && commentView(saved.event) === view);
   }
 
-  // anchors: [{el, index, quote}] for the elements just rendered. A comment
-  // attaches to the element whose text still matches its quote, so cards
-  // follow their text when the agent edits the doc. Quotes can repeat (two
-  // identical headings): the event's `occurrence` says which one, falling back
-  // to the match nearest the original position. Returns the events of
-  // comments whose text is gone.
-  function attachCommentCards(docPath, view, anchors) {
-    const cardsByAnchor = new Map();
-    const orphans = [];
+  // Comments made on the revision on screen attach to the block whose text
+  // matches their quote (occurrence, then the nearest index, break ties).
+  // Comments made on an earlier revision are carried forward through the diffs
+  // between there and the target, and show whether their text has changed
+  // since. placement: {target, carry (see carryContext, or null), removedBlocks
+  // (anchor index in the base revision -> its removed element in the diff on
+  // screen), base (the diff's base revision, or null)}.
+  // Returns the comments to show at doc level: [{event, note, status}].
+  function attachCommentCards(docPath, view, anchors, placement) {
+    const cardsByEl = new Map();
+    const docLevel = [];
+    const attach = (el, saved, status) => {
+      if (!cardsByEl.has(el)) cardsByEl.set(el, []);
+      cardsByEl.get(el).push({ saved: saved, status: status });
+    };
+    const elAt = index => (anchors.find(anchor => anchor.index === index) || {}).el;
     commentsIn(docPath, view).forEach(saved => {
-      const anchor = resolveAnchor(saved.event, anchors);
-      if (!anchor) { orphans.push(saved.event); return; }
-      if (!cardsByAnchor.has(anchor)) cardsByAnchor.set(anchor, []);
-      cardsByAnchor.get(anchor).push(saved);
+      const revision = commentRevision(saved.event);
+      if (revision > placement.target) {
+        docLevel.push({ event: saved.event, note: 'Made on revision ' + revision + ': “' + saved.event.quote + '”' });
+        return;
+      }
+      if (revision === placement.target || !placement.carry) {
+        const anchor = resolveAnchor(saved.event, anchors);
+        if (anchor) attach(anchor.el, saved, null);
+        else docLevel.push({ event: saved.event, note: 'Commented text has changed: “' + saved.event.quote + '”' });
+        return;
+      }
+      const carry = placement.carry;
+      const outcome = carryForward(saved.event, carry.anchorsFor, (v, from) => carry.chainBetween(from, placement.target));
+      if (outcome.state === 'unanchored') {
+        docLevel.push({ event: saved.event, note: 'Anchor not found: “' + saved.event.quote + '”' });
+      } else if (outcome.state === 'open') {
+        attach(elAt(outcome.index), saved, 'open');
+      } else if (outcome.state === 'addressed') {
+        attach(elAt(outcome.index), saved, 'addressed in revision ' + outcome.revision);
+      } else {
+        const status = 'addressed in revision ' + outcome.revision + ' (text removed)';
+        const el = removedBlockFor(saved.event, placement) || elAt(outcome.afterIndex);
+        if (el) attach(el, saved, status);
+        else docLevel.push({ event: saved.event, note: 'Commented text was removed: “' + saved.event.quote + '”', status: status });
+      }
     });
-    cardsByAnchor.forEach((comments, anchor) => attachComments(anchor.el, comments));
-    return orphans;
+    cardsByEl.forEach((comments, el) => attachComments(el, comments));
+    return docLevel;
+  }
+
+  // The removed element in the diff on screen that a carried comment's block
+  // became: only when the block still exists in the diff's base revision.
+  function removedBlockFor(event, placement) {
+    const revision = commentRevision(event);
+    if (placement.base === null || placement.base < revision) return null;
+    const carry = placement.carry;
+    const inBase = carryForward(event, carry.anchorsFor, (v, from) => carry.chainBetween(from, placement.base));
+    if (inBase.state !== 'open' && inBase.state !== 'addressed') return null;
+    return placement.removedBlocks.get(inBase.index) || null;
+  }
+
+  // Comments from viewers that predate revisions were made on revision 1.
+  function commentRevision(event) {
+    return event.revision !== undefined ? event.revision : 1;
   }
 
   // Submit is per doc: it counts and sends only the current doc's comments.
@@ -353,13 +397,21 @@
     btn.disabled = pendingCount === 0;
   }
 
-  function commentCard(saved) {
+  // status: where a carried-forward comment stands now ('open', 'addressed in
+  // revision k', …), or null for a comment on the revision on screen.
+  function commentCard(saved, status) {
     const card = document.createElement('div');
     card.className = 'comment-card';
     const badge = document.createElement('span');
     badge.className = 'badge ' + (saved.isSent ? 'sent' : 'pending');
     badge.textContent = saved.isSent ? 'sent' : 'pending';
     card.appendChild(badge);
+    if (status) {
+      const statusBadge = document.createElement('span');
+      statusBadge.className = 'status-badge ' + (status === 'open' ? 'open' : 'addressed');
+      statusBadge.textContent = status;
+      card.appendChild(statusBadge);
+    }
     if (saved.event.selection) {
       const quote = document.createElement('blockquote');
       quote.className = 'sel';
@@ -384,22 +436,23 @@
     el.classList.add('commented');
     const cards = document.createElement('div');
     cards.className = 'comment-cards';
-    comments.forEach(saved => cards.appendChild(commentCard(saved)));
+    comments.forEach(comment => cards.appendChild(commentCard(comment.saved, comment.status)));
     insertAfter(el, cards);
   }
 
-  // Orphans are kept as events and looked up here, so their sent status is
-  // current even after a Submit replaced the savedComments entries.
-  function renderDocComments(doc, orphanEvents) {
+  // Doc-level entries are kept as events and looked up here, so their sent
+  // status is current even after a Submit replaced the savedComments entries.
+  function renderDocComments(doc, docLevel) {
     const list = $('#doc-comments');
     list.innerHTML = '';
-    commentsIn(doc.path, 'doc').forEach(saved => list.appendChild(commentCard(saved)));
-    const orphans = savedComments.filter(saved => orphanEvents.includes(saved.event));
-    orphans.forEach(saved => {
-      const card = commentCard(saved);
+    commentsIn(doc.path, 'doc').forEach(saved => list.appendChild(commentCard(saved, null)));
+    docLevel.forEach(entry => {
+      const saved = savedComments.find(candidate => candidate.event === entry.event);
+      if (!saved) return;
+      const card = commentCard(saved, entry.status || null);
       const note = document.createElement('div');
       note.className = 'orphan';
-      note.textContent = 'Commented text has changed: “' + saved.event.quote + '”';
+      note.textContent = entry.note;
       card.insertBefore(note, card.querySelector('.text'));
       list.appendChild(card);
     });
@@ -436,6 +489,7 @@
     const comparison = comparisonFor(doc, entries);
     const target = await revisionText(doc, entries, comparison.target);
     const base = isDiffable && comparison.base !== null ? await revisionText(doc, entries, comparison.base) : null;
+    const carry = await carryContext(doc, view, entries, comparison.target, id);
     // Everything below is synchronous: what is drawn, and what Approve would
     // approve, change together — and only for the newest render.
     if (generation !== renderGeneration) return;
@@ -451,15 +505,20 @@
     }
     let anchors;
     let shownComparison = null;
+    let removedBlocks = new Map();
     if (base && base.isLoaded && target.isLoaded) {
       const shown = renderDiff(pane, id, view, base.text, target.text);
       anchors = shown.anchors;
+      removedBlocks = shown.removedBlocks;
       shownComparison = { from: comparison.base, to: comparison.target, isIdentical: shown.isIdentical };
     } else if (view === 'source') anchors = renderSource(pane, target.text);
     else if (view === 'gherkin') anchors = renderGherkin(pane, target.text);
     else anchors = renderRendered(pane, id, target.text);
     renderedAnchors = anchors;
-    currentOrphans = attachCommentCards(doc.path, view, anchors);
+    currentOrphans = attachCommentCards(doc.path, view, anchors, {
+      target: comparison.target, carry: carry, removedBlocks: removedBlocks,
+      base: shownComparison ? shownComparison.from : null
+    });
     headerState = { doc: doc, view: view, shownComparison: shownComparison, entries: entries, comparison: comparison };
     renderHeader(headerState);
     renderDocComments(doc, currentOrphans);
@@ -660,6 +719,47 @@
     return docText({ id: doc.id, path: doc.path, revision: revision, sha256: sha256 });
   }
 
+  // What carrying comments forward to the target needs: every revision from
+  // the oldest one commented on (in this view) up to the target, loaded.
+  // null when no comment predates the target, or a revision failed to load
+  // (logged); comments then attach to the target by quote, as they are.
+  async function carryContext(doc, view, entries, target, id) {
+    const older = commentsIn(doc.path, view).map(saved => commentRevision(saved.event)).filter(r => r < target);
+    if (older.length === 0 || entries.length === 0) return null;
+    const texts = new Map();
+    for (let revision = Math.min(...older); revision <= target; revision++) {
+      const loaded = await revisionText(doc, entries, revision);
+      if (!loaded.isLoaded) {
+        console.error('revision ' + revision + ' of ' + doc.path + ' unavailable; comments shown without carry-forward');
+        return null;
+      }
+      texts.set(revision, loaded.text);
+    }
+    return {
+      anchorsFor: revision => offscreenAnchors(view, id, texts.get(revision)),
+      chainBetween: (from, to) => {
+        const chain = [];
+        for (let revision = from; revision < to; revision++) chain.push(diffNodes(view, texts.get(revision), texts.get(revision + 1)));
+        return chain;
+      }
+    };
+  }
+
+  function offscreenAnchors(view, id, source) {
+    const container = document.createElement('div');
+    if (view === 'source') return renderSource(container, source);
+    if (view === 'gherkin') return renderGherkin(container, source);
+    return renderRendered(container, id, source);
+  }
+
+  // Top-level diff nodes between two revisions, in the view's own units:
+  // markdown blocks, Gherkin blocks, or source lines.
+  function diffNodes(view, baseSource, targetSource) {
+    if (view === 'source') return diffLines(baseSource, targetSource);
+    if (view === 'gherkin') return diffGherkin(parseGherkinBlocks(baseSource), parseGherkinBlocks(targetSource)).nodes;
+    return diffMarkdown(markdownBlocks(baseSource), markdownBlocks(targetSource), MARKED_RENDER).nodes;
+  }
+
   // What to show: the operator's choice for this doc, else — when the doc has
   // revisions they haven't seen — the diff from the last one they viewed,
   // else the latest revision in full.
@@ -772,14 +872,16 @@
     const targetAnchors = detachedAnchors(container => renderRendered(container, id, targetSource));
     const anchors = [];
     pane.innerHTML = '';
+    const removedBlocks = new Map();
     tree.nodes.forEach(node => {
       markdownNodeElements(node).forEach(el => {
         pane.appendChild(el);
         if (el.dataset.side !== 'base') anchorDiffElement(el, targetAnchors[node.targetIndex], anchors);
+        else if (node.op === 'removed') removedBlocks.set(node.baseIndex, el);
       });
     });
     rewriteImages(pane, id);
-    return { anchors: anchors, isIdentical: tree.isIdentical };
+    return { anchors: anchors, isIdentical: tree.isIdentical, removedBlocks: removedBlocks };
   }
 
   // One node can yield two elements (a changed block that falls back to a
@@ -980,12 +1082,14 @@
     const targetAnchors = detachedAnchors(container => renderGherkin(container, targetSource));
     const anchors = [];
     pane.innerHTML = '';
+    const removedBlocks = new Map();
     tree.nodes.forEach(node => {
       const el = gherkinNodeElement(node);
       pane.appendChild(el);
       if (node.op !== 'removed') anchorDiffElement(el, targetAnchors[node.targetIndex], anchors);
+      else removedBlocks.set(node.baseIndex, el);
     });
-    return { anchors: anchors, isIdentical: tree.isIdentical };
+    return { anchors: anchors, isIdentical: tree.isIdentical, removedBlocks: removedBlocks };
   }
 
   function gherkinNodeElement(node) {
@@ -1067,6 +1171,7 @@
   // Plain-text docs: numbered lines, as in the source view.
   function renderLinesDiff(pane, baseSource, targetSource) {
     const lines = diffLines(baseSource, targetSource);
+    const removedBlocks = new Map(); // 1-based base line -> its removed row
     const targetAnchors = detachedAnchors(container => renderSource(container, targetSource));
     const anchors = [];
     const table = document.createElement('table');
@@ -1085,11 +1190,14 @@
       table.appendChild(row);
       // Source anchors are 1-based line numbers.
       if (line.op !== 'removed') anchorDiffElement(row, targetAnchors[line.targetIndex], anchors);
+      else removedBlocks.set(line.baseIndex + 1, row);
     });
     pane.innerHTML = '';
     pane.appendChild(table);
-    return { anchors: anchors, isIdentical: lines.every(line => line.op === 'equal') };
+    return { anchors: anchors, isIdentical: lines.every(line => line.op === 'equal'), removedBlocks: removedBlocks };
   }
+
+  const APPROVE_LATEST_HINT = 'Approve the latest revision';
 
   // state: {doc, view, shownComparison ({from, to, isIdentical} when a diff is
   // on screen, else null), entries, comparison}.
@@ -1103,6 +1211,10 @@
     const btn = $('#approve');
     btn.textContent = isApproved ? 'Approved ✓' : 'Approve';
     btn.classList.toggle('approved', isApproved);
+    // Only the latest revision can be signed off.
+    const isOlderRevision = state.comparison.target !== doc.revision;
+    btn.disabled = isOlderRevision;
+    btn.title = isOlderRevision ? APPROVE_LATEST_HINT : '';
     renderSubmitButton();
     const toggle = $('#view-toggle');
     toggle.hidden = !TOGGLEABLE_EXTENSIONS.includes(extensionOf(doc.path));
@@ -1273,7 +1385,10 @@
   // Submit or Approve; only those wake the agent.
   const SAVED_TOAST = 'Comment saved — Submit to send it to the agent';
 
+  // Every comment records the revision on screen it was made on.
   function recordComment(event) {
+    const shown = shownRevisions.get(event.doc);
+    if (shown) event.revision = shown.revision;
     sendEvent(event);
     savedComments.push({ event: event, isSent: false });
     renderSubmitButton();

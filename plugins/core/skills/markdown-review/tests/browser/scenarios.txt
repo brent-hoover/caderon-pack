@@ -20,3 +20,12 @@ The operator compares any two revisions
 The operator views changes since their approval
 A doc with only one revision has no diff
 Choosing a base revision newer than the target is rejected
+A comment on changed text is shown as addressed
+A comment on unchanged text is shown as still open
+A comment on removed text is shown as addressed by removal
+A comment from an older viewer without a revision is treated as revision 1
+A comment whose anchor cannot be found in its own revision is shown at doc level
+An approval records the revision it approves
+A comment records the revision it was made on
+An approval of an older revision is marked stale after a revise
+Approving while viewing an older revision is not allowed
