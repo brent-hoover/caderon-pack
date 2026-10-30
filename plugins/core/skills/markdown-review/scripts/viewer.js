@@ -15,7 +15,8 @@
   let docs = [];                  // [{id, path, mtime}] from GET /docs
   let currentId = null;
   let currentPath = null;         // path of the doc currentId refers to
-  const textCache = new Map();    // path -> doc source
+  const textCache = new Map();    // revisionKey(doc) -> that revision's source
+  const shownRevisions = new Map(); // path -> revisionKey of the revision on screen
   // Every comment saved this session, in order: [{event, isSent}]. Rebuilt from
   // GET /events on load; a comment is sent once a submit or approve on its own
   // doc follows it.
@@ -23,7 +24,7 @@
   let currentOrphans = [];        // comment events of the current doc/view whose text is gone
   let renderedAnchors = [];       // [{el, index, quote}] of the doc on screen
   const viewChoice = new Map();   // path -> view the operator toggled to (in-memory; resets on reload)
-  const approved = new Map();     // path -> revision approved
+  const approved = new Map();     // path -> revisionKey approved
   const updated = new Set();      // paths changed since last viewed
   let popover = null;
 
@@ -128,18 +129,31 @@
     return r.json();
   }
 
+  // A revision is identified by number and hash: deleted and recreated history
+  // reuses revision numbers for different content.
+  function revisionKey(doc) {
+    return doc.path + '#' + doc.revision + ':' + doc.sha256;
+  }
+
+  // Fetched by revision number, so the text always matches the revision
+  // /docs reported, even if another revise lands in between.
   async function docText(doc) {
-    if (!textCache.has(doc.path)) {
-      const r = await fetch('/doc/' + doc.id);
-      textCache.set(doc.path, r.ok ? await r.text() : '*Failed to load ' + doc.path + '*');
+    const key = revisionKey(doc);
+    if (!textCache.has(key)) {
+      if (doc.revision === null) {
+        textCache.set(key, '*' + doc.path + ' has no revisions yet — the agent needs to run serve-doc or revise.*');
+      } else {
+        const r = await fetch('/doc/' + doc.id + '/rev/' + doc.revision);
+        textCache.set(key, r.ok ? await r.text() : '*Failed to load revision ' + doc.revision + ' of ' + doc.path + '*');
+      }
     }
-    return textCache.get(doc.path);
+    return textCache.get(key);
   }
 
   // Markdown: first '# ' heading. Gherkin: the Feature name ('#' lines there
   // are comments, not headings). Anything else, or no match: the file name.
   function titleFor(doc) {
-    const text = textCache.get(doc.path) || '';
+    const text = textCache.get(revisionKey(doc)) || '';
     const extension = extensionOf(doc.path);
     let match = null;
     if (MARKDOWN_EXTENSIONS.includes(extension)) match = text.match(/^#\s+(.+)$/m);
@@ -189,9 +203,8 @@
     docs = await fetchJson('/docs');
     const doc = docs[id];
     if (!doc) return;
-    textCache.delete(doc.path);
     await docText(doc);
-    if (approved.has(doc.path) && doc.revision !== approved.get(doc.path)) approved.delete(doc.path);
+    if (approved.has(doc.path) && approved.get(doc.path) !== revisionKey(doc)) approved.delete(doc.path);
     remapCurrentId();
     if (id === currentId) await renderDoc(id, { preserveScroll: true });
     else updated.add(doc.path);
@@ -407,6 +420,7 @@
     const scrollTop = opts.preserveScroll ? pane.scrollTop : 0;
     closePopover();
     const source = await docText(doc);
+    shownRevisions.set(doc.path, revisionKey(doc));
     const view = currentViewFor(doc.path);
     let anchors;
     if (view === 'source') anchors = renderSource(pane, source);
@@ -755,7 +769,9 @@
     markDocSent(doc.path);
     renderSubmitButton();
     showAllCardsSent();
-    approved.set(doc.path, doc.revision);
+    // The revision on screen, not the latest /docs reported: a newer one may
+    // still be loading.
+    approved.set(doc.path, shownRevisions.get(doc.path));
     renderSidebar();
     renderHeader(doc, currentViewFor(doc.path));
     flash('Approved');

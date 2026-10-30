@@ -175,7 +175,7 @@ location.replace('/');
 
 let manifest = [];              // absolute, deduped doc paths
 const docWatchers = new Map();  // doc path -> revision index path under fs.watchFile
-const latestRevisions = new Map(); // doc path -> latest revision already announced
+const announcedEntries = new Map(); // doc path -> latest index entry already announced, or null
 
 function loadManifest() {
   let raw;
@@ -201,13 +201,13 @@ function loadManifest() {
 function syncDocWatchers() {
   const current = new Set(manifest);
   for (const [p, indexPath] of docWatchers) {
-    if (!current.has(p)) { fs.unwatchFile(indexPath); docWatchers.delete(p); latestRevisions.delete(p); }
+    if (!current.has(p)) { fs.unwatchFile(indexPath); docWatchers.delete(p); announcedEntries.delete(p); }
   }
   for (const p of manifest) {
     if (docWatchers.has(p)) continue;
     const indexPath = path.join(revisionDir(p), 'index.jsonl');
     docWatchers.set(p, indexPath);
-    latestRevisions.set(p, latestRevisionOf(p));
+    announcedEntries.set(p, latestEntryOf(p));
     fs.watchFile(indexPath, { interval: 1000 }, (curr, prev) => {
       if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) return;
       announceNewRevision(p);
@@ -215,18 +215,19 @@ function syncDocWatchers() {
   }
 }
 
-// Only a higher revision is news: a deleted index (zeroed stats) or a
-// repaired partial line changes the file without adding a revision.
+// News is a latest entry we haven't announced. Entries are compared whole, not
+// by number: history deleted and recreated (even between two polls) starts
+// again at revision 1 with a different hash and timestamp. A deleted index
+// (zeroed stats) or a repaired partial line adds no entry and stays silent.
 function announceNewRevision(docPath) {
-  const revision = latestRevisionOf(docPath);
-  if (revision === null) {
-    // History is gone: stay silent, but let recreated history (which starts
-    // again at revision 1) be announced.
-    latestRevisions.set(docPath, null);
+  const entry = latestEntryOf(docPath);
+  if (entry === null) {
+    announcedEntries.set(docPath, null);
     return;
   }
-  if (revision <= (latestRevisions.get(docPath) || 0)) return;
-  latestRevisions.set(docPath, revision);
+  if (entryKey(entry) === entryKey(announcedEntries.get(docPath))) return;
+  announcedEntries.set(docPath, entry);
+  const revision = entry.revision;
   touchActivity();
   const id = manifest.indexOf(docPath);
   if (id < 0) return;
@@ -234,9 +235,18 @@ function announceNewRevision(docPath) {
   broadcast({ type: 'revision', id, revision });
 }
 
+function entryKey(entry) {
+  return entry ? entry.revision + ':' + entry.timestamp + ':' + entry.sha256 : null;
+}
+
+function latestRevisionOf(docPath) {
+  const entry = latestEntryOf(docPath);
+  return entry ? entry.revision : null;
+}
+
 // null when the doc has no history, or history that can't be trusted (a
 // symlink or an invalid line); the error is logged so the agent can fix it.
-function latestRevisionOf(docPath) {
+function latestEntryOf(docPath) {
   let index;
   try {
     index = readIndex(docPath);
@@ -244,7 +254,7 @@ function latestRevisionOf(docPath) {
     console.error('revision history unreadable for ' + docPath + ': ' + e.message);
     return null;
   }
-  return index.length > 0 ? index[index.length - 1].revision : null;
+  return index.length > 0 ? index[index.length - 1] : null;
 }
 
 function refreshManifest() {
@@ -263,7 +273,8 @@ function docsPayload() {
   return manifest.map((p, id) => {
     let mtime = null;
     try { mtime = fs.statSync(p).mtimeMs; } catch (e) { /* stale entry */ }
-    return { id, path: p, mtime, revision: latestRevisionOf(p) };
+    const latest = latestEntryOf(p);
+    return { id, path: p, mtime, revision: latest ? latest.revision : null, sha256: latest ? latest.sha256 : null };
   });
 }
 

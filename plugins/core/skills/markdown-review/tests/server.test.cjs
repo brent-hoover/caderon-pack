@@ -457,3 +457,27 @@ test('a revision file missing from the index is not served', async () => {
 
   assert.strictEqual((await get('/doc/' + id + '/rev/2')).status, 404);
 });
+
+test('history deleted and recreated within one poll is announced', async () => {
+  const { doc, id } = await servedDoc('swapped.md', FIRST_DRAFT);
+  const browser = listen();
+  await browser.opened;
+  fs.rmSync(path.join(docsDir, '.revisions', 'swapped.md'), { recursive: true });
+  fs.writeFileSync(doc, SECOND_DRAFT);
+
+  assert.strictEqual(runScript('revise.cjs', ['--session-dir', sessionDir, doc]).status, 0);
+
+  const notice = await waitForMessage(browser.messages, m => m.type === 'revision' && m.id === id, NOTICE_TIMEOUT_MS);
+  browser.close();
+  assert.deepStrictEqual(notice, { type: 'revision', id, revision: 1 });
+  assert.strictEqual(await (await get('/doc/' + id)).text(), SECOND_DRAFT);
+});
+
+test('/docs carries the latest revision hash', async () => {
+  const { id } = await servedDoc('hashed.md', FIRST_DRAFT);
+
+  const docs = await (await get('/docs')).json();
+
+  assert.match(docs[id].sha256, /^[0-9a-f]{64}$/);
+});
+
