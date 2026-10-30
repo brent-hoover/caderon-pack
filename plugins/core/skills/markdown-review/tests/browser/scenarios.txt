@@ -21,6 +21,8 @@ The operator compares any two revisions
 The operator views changes since their approval
 A doc with only one revision has no diff
 Choosing a base revision newer than the target is rejected
+Approve is refused while a newer revision is loading
+a comment drafted while another doc loads stays on its own doc
 A comment on changed text is shown as addressed
 A comment on unchanged text is shown as still open
 A comment on removed text is shown as addressed by removal

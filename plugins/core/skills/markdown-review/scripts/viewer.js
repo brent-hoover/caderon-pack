@@ -482,6 +482,9 @@
   let headerState = null; // the arguments of the last renderHeader, for refreshes
 
   let renderGeneration = 0; // bumped per renderDoc; a superseded render discards its result
+  // The doc whose content is on screen. Differs from docs[currentId] while a
+  // newly selected doc is still loading; comments belong to what was clicked.
+  let displayedPath = null;
 
   async function renderDoc(id, opts) {
     const doc = docs[id];
@@ -505,6 +508,7 @@
     if (generation !== renderGeneration) return;
     const pane = $('#doc');
     const scrollTop = opts.preserveScroll ? pane.scrollTop : 0;
+    displayedPath = doc.path;
     // A failed load shows an error, not the revision, so it can't be approved.
     if (target.isLoaded) {
       shownRevisions.set(doc.path, { revision: comparison.target, sha256: entrySha256(doc, entries, comparison.target) });
@@ -1306,8 +1310,9 @@
   // anchor: { view, quote, blockIndex? , line? } — copied onto the comment event,
   // plus the quote's occurrence among the anchors on screen.
   function openPopover(el, clickedAnchor) {
-    // The doc this draft belongs to, fixed now: currentId may change before Save.
-    const docPath = docs[currentId].path;
+    // The doc whose block was clicked, fixed now: the selection may already
+    // have moved to a doc that is still loading.
+    const docPath = displayedPath;
     const onScreen = renderedAnchors.find(a => a.el === el);
     const anchor = Object.assign({}, clickedAnchor, { occurrence: occurrenceOf(renderedAnchors, onScreen) });
     closePopover();

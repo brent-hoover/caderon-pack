@@ -48,6 +48,8 @@ const CHECKS = [
   { name: 'The operator views changes since their approval', run: checkChangesSinceApproval },
   { name: 'A doc with only one revision has no diff', run: checkSingleRevision },
   { name: 'Choosing a base revision newer than the target is rejected', run: checkInvertedRangeRejected },
+  { name: 'Approve is refused while a newer revision is loading', run: checkApproveWhileLoading },
+  { name: 'a comment drafted while another doc loads stays on its own doc', run: checkCommentDuringSwitch },
   { name: 'A comment on changed text is shown as addressed', run: checkCommentAddressed },
   { name: 'A comment on unchanged text is shown as still open', run: checkCommentOpen },
   { name: 'A comment on removed text is shown as addressed by removal', run: checkCommentRemoved },
@@ -352,6 +354,64 @@ function checkInvertedRangeRejected() {
   });
 }
 
+// ===== loading races =====
+
+// Holds the viewer's revision requests (text and index) until released, so a
+// check can act while a render is still loading.
+const HOLD_REVISION_LOADS = '(() => { const realFetch = window.fetch; window.__held = []; window.__holding = true; ' +
+  'window.fetch = (url, options) => (window.__holding && /\\/(rev|revisions)\\//.test(String(url)))' +
+  ' ? new Promise(resolve => window.__held.push(() => resolve(realFetch(url, options)))) : realFetch(url, options); ' +
+  'return true; })()';
+const RELEASE_REVISION_LOADS = '(() => { window.__holding = false; window.__held.forEach(go => go()); return window.__held.length; })()';
+const SETTLE_MS = 1000;
+
+function pause(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function checkApproveWhileLoading() {
+  withTwoRevisions(review => {
+    evaluate(HOLD_REVISION_LOADS);
+    review.edit('plan.md', PLAN_REVISIONS[2]);
+    review.revise('plan.md');
+    review.waitFor('window.__held.length > 0');
+    evaluate('document.querySelector("#approve").click() || true');
+    pause(SETTLE_MS);
+    expectEqual(review.events().filter(e => e.type === 'approve').length, 0, 'approvals while loading');
+    evaluate(RELEASE_REVISION_LOADS);
+    review.waitFor('document.querySelector("#revinfo").textContent === "Revision 3 of 3"');
+    browser(['click', '#approve']);
+    const approval = review.waitForEvent(e => e.type === 'approve');
+    expectEqual(approval.revision, 3, 'approved revision');
+  });
+}
+
+function checkCommentDuringSwitch() {
+  const review = startReview({ 'a.md': '# Alpha\n\nAlpha body.\n', 'b.md': '# Beta\n\nBeta body.\n' });
+  try {
+    review.open();
+    review.waitFor('document.querySelector("#docheader").textContent.startsWith("Beta")');
+    browser(['click', '#doclist li:nth-child(1)']);
+    review.waitFor('document.querySelector("#docheader").textContent.startsWith("Alpha")');
+    // A new revision of b: opening it now has to load what isn't cached yet.
+    review.edit('b.md', '# Beta\n\nBeta body, revised.\n');
+    review.revise('b.md');
+    review.waitFor('document.querySelectorAll("#doclist .dot").length === 1');
+    evaluate(HOLD_REVISION_LOADS);
+    browser(['click', '#doclist li:nth-child(2)']);
+    review.waitFor('window.__held.length > 0');
+    browser(['click', '#doc .block:nth-child(2)']);
+    browser(['fill', '.popover textarea', 'about alpha']);
+    browser(['click', '.popover .save']);
+    const comment = review.waitForEvent(e => e.type === 'comment' && e.comment === 'about alpha');
+    evaluate(RELEASE_REVISION_LOADS);
+    expectEqual(comment.doc, review.docPath('a.md'), 'comment doc');
+    expectEqual(comment.quote, 'Alpha body.', 'comment quote');
+  } finally {
+    review.stop();
+  }
+}
+
 // ===== comments carried forward =====
 
 const COMMENTED = 'The cache expires after 30 seconds.';
@@ -510,6 +570,7 @@ function startReview(docs) {
         throw new Error(e.message + ' — page showed ' + JSON.stringify(evaluate(PAGE_STATE)));
       }
     },
+    events: () => readEvents(eventsFile),
     waitForEvent: (matches) => waitUntil(() => readEvents(eventsFile).find(matches), 'a matching event in ' + eventsFile),
     stop: () => run(path.join(SCRIPTS, 'stop-server.sh'), [info.session_dir])
   };
