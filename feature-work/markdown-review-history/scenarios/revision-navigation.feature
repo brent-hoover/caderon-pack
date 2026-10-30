@@ -1,5 +1,5 @@
 # scenarios/revision-navigation.feature
-# Maps to: plan.md Step TBD
+# Maps to: plan.md Step 9
 
 Feature: Navigating revisions and diffs in the viewer
   As the operator reviewing a doc over several rounds

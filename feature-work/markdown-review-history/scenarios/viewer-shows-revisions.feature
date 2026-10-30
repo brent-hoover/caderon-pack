@@ -1,5 +1,5 @@
 # scenarios/viewer-shows-revisions.feature
-# Maps to: plan.md Step TBD
+# Maps to: plan.md Step 3
 
 Feature: The viewer shows only revised content
   As the operator reviewing docs

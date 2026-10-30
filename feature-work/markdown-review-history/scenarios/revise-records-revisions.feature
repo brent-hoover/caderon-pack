@@ -1,5 +1,5 @@
 # scenarios/revise-records-revisions.feature
-# Maps to: plan.md Step TBD
+# Maps to: plan.md Step 2
 
 Feature: The agent records reviewable revisions of a doc
   As the agent authoring docs for review

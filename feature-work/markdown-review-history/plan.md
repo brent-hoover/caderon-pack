@@ -433,7 +433,7 @@ Extend `run.sh`:
 
 ### 11. Skill docs, version bump, traceability
 
-**Status:** ☐
+**Status:** ☑
 
 **What:**
 
@@ -611,3 +611,6 @@ All 38 scenarios are covered, with no gaps.
 - 2026-10-30: Step 10 done. 31 browser checks pass: all viewer-side scenarios, plus regressions
   from the roborev rounds. Comments seeded through the events file stand in for comments made in an
   earlier session, and the feedback checks run the real `wait-for-feedback.cjs`.
+- 2026-10-30: Step 11 done. `SKILL.md` and `DESIGN.md` were rewritten whole, not patched. Core is
+  bumped to 1.8.0. The coverage test was checked to fail when a scenario loses its test. Final
+  totals: 118 node tests, 32 browser checks.

@@ -1,5 +1,5 @@
 # scenarios/comments-carry-forward.feature
-# Maps to: plan.md Step TBD
+# Maps to: plan.md Steps 6 (logic), 10 (browser)
 
 Feature: Comments carry forward across revisions
   As the operator re-reviewing a revised doc

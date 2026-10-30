@@ -1,5 +1,5 @@
 # scenarios/rich-diff.feature
-# Maps to: plan.md Step TBD
+# Maps to: plan.md Steps 4–5 (diff tree), 8 (browser)
 
 Feature: Rich diff between two revisions
   As the operator re-reviewing a revised doc

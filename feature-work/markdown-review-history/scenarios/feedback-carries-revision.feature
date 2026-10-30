@@ -1,5 +1,5 @@
 # scenarios/feedback-carries-revision.feature
-# Maps to: plan.md Step TBD
+# Maps to: plan.md Step 10
 
 Feature: Operator feedback names the revision it applies to
   As the agent acting on review feedback

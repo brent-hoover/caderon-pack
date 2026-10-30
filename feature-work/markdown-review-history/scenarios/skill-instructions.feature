@@ -1,5 +1,5 @@
 # scenarios/skill-instructions.feature
-# Maps to: plan.md Step TBD
+# Maps to: plan.md Step 11
 
 Feature: SKILL.md teaches the revise loop
   As an agent that only reads SKILL.md
