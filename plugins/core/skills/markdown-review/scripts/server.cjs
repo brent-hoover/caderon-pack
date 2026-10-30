@@ -304,6 +304,14 @@ function serveRevision(res, docPath, revision, expectedSha256) {
       return;
     }
     body = readRevision(docPath, revision);
+    // History can be replaced between reading the index and the file: the
+    // body itself must still hash to what the index said.
+    const bodySha256 = crypto.createHash('sha256').update(body).digest('hex');
+    if (bodySha256 !== entry.sha256) {
+      res.writeHead(409, securityHeaders({ 'Content-Type': 'text/plain; charset=utf-8' }));
+      res.end('revision ' + revision + ' of ' + docPath + ' changed while loading — refetch /docs');
+      return;
+    }
   } catch (e) {
     // A missing revision is an ordinary 404; anything else (a symlink, an
     // unreadable file) is history the agent needs to look at.

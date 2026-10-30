@@ -21,6 +21,52 @@ const ATOMIC_INLINE_TYPES = ['strong', 'em', 'del', 'codespan', 'link', 'image']
 // keeping unrelated sentences apart.
 const PAIRING_SIMILARITY = 0.3;
 
+// Elements with no closing tag, so they never open a container.
+const VOID_ELEMENTS = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'];
+const TAG_PATTERN = /<(\/?)([a-zA-Z][\w-]*)\b[^>]*?(\/?)>/g;
+
+// marked splits raw HTML at blank lines, so a container such as
+// <details>…markdown…</details> arrives as an opening html token, markdown
+// tokens, then a closing html token. Rendered one token at a time, the
+// container would close early and its markdown would spill out of it, so the
+// run becomes one html block. This is the block list the viewer renders and
+// diffs: block i is entry i.
+function groupHtmlContainers(blocks, render) {
+  const grouped = [];
+  let open = null;
+  for (const token of blocks) {
+    const balance = token.type === 'html' ? tagBalance(token.raw) : 0;
+    if (open) {
+      open.tokens.push(token);
+      open.depth += balance;
+      if (open.depth <= 0) { grouped.push(mergedHtmlBlock(open.tokens, render)); open = null; }
+    } else if (balance > 0) {
+      open = { tokens: [token], depth: balance };
+    } else {
+      grouped.push(token);
+    }
+  }
+  // A container never closed runs to the end of the doc, as a browser would.
+  if (open) grouped.push(mergedHtmlBlock(open.tokens, render));
+  return grouped;
+}
+
+function mergedHtmlBlock(tokens, render) {
+  return { type: 'html', block: true, pre: false, raw: tokens.map(token => token.raw).join(''),
+    text: render.blocks(clone(tokens)) };
+}
+
+// Opening tags minus closing tags, ignoring void and self-closed elements.
+function tagBalance(html) {
+  let balance = 0;
+  for (const match of html.matchAll(TAG_PATTERN)) {
+    const [, closing, name, selfClosing] = match;
+    if (VOID_ELEMENTS.includes(name.toLowerCase()) || selfClosing) continue;
+    balance += closing ? -1 : 1;
+  }
+  return balance;
+}
+
 // Top-level diff of two revisions' non-space block tokens.
 function diffMarkdown(baseBlocks, targetBlocks, render) {
   const nodes = diffBlocks(baseBlocks, targetBlocks, render);
@@ -352,7 +398,7 @@ function clone(value) {
 
 if (typeof module !== 'undefined') {
   module.exports = {
-    diffMarkdown, diffGherkin, diffLines, diffSequence, pairChanges, diffWords,
+    diffMarkdown, diffGherkin, diffLines, diffSequence, pairChanges, diffWords, groupHtmlContainers,
     carryForward, mapForward, resolveAnchor, commentView, anchorIndexOf
   };
 }

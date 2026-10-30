@@ -7,7 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const SCRIPTS = path.join(__dirname, '..', 'scripts');
-const { diffMarkdown, diffGherkin, diffLines, carryForward } = require(path.join(SCRIPTS, 'revision-diff.cjs'));
+const { diffMarkdown, diffGherkin, diffLines, carryForward, groupHtmlContainers } = require(path.join(SCRIPTS, 'revision-diff.cjs'));
 const { parseGherkinBlocks } = require(path.join(SCRIPTS, 'gherkin.cjs'));
 
 // A plain require() of marked.min.js returns nothing under the repo's
@@ -25,7 +25,7 @@ const render = {
 };
 
 function blocksOf(source) {
-  return marked.lexer(source).filter(token => token.type !== 'space');
+  return groupHtmlContainers(marked.lexer(source).filter(token => token.type !== 'space'), render);
 }
 
 function diff(baseSource, targetSource) {
@@ -178,6 +178,13 @@ test('dissimilar same-kind blocks in a longer run are not paired', () => {
     'Keep this.\n\nPolling may miss writes.\n\nAnother new line here.\n\nThird addition.\n');
 
   assert.ok(tree.nodes.every(n => n.op !== 'changed'));
+});
+
+test('an html container spanning markdown is one block', () => {
+  const blocks = blocksOf('<details><summary>More</summary>\n\n- hidden item\n\n</details>\n\nAfter.\n');
+
+  assert.deepStrictEqual(blocks.map(b => b.type), ['html', 'paragraph']);
+  assert.match(blocks[0].text, /<details><summary>More<\/summary>[\s\S]*<li>hidden item<\/li>[\s\S]*<\/details>/);
 });
 
 const LOGIN_FEATURE = 'Feature: Login\n\n' +

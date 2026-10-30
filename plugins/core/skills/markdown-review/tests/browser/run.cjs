@@ -21,6 +21,7 @@ const WAIT_STEP_MS = 100;
 // feature-work/markdown-review-history/scenarios/*.feature.
 const CHECKS = [
   { name: 'smoke', run: checkSmoke },
+  { name: 'a details block keeps its markdown inside', run: checkDetailsBlock },
   { name: 'A changed word inside a paragraph is marked inline', run: checkInlineWordChange },
   { name: 'A new section is shown as added', run: checkAddedSection },
   { name: 'A removed paragraph is still shown, marked as removed', run: checkRemovedParagraph },
@@ -77,6 +78,18 @@ function checkSmoke() {
     review.edit('doc.md', '# Smoke\n\nRevised draft.\n\nSecond paragraph.\n');
     review.revise('doc.md');
     review.waitFor('document.querySelector("#doc").textContent.includes("Revised draft.")');
+  } finally {
+    review.stop();
+  }
+}
+
+function checkDetailsBlock() {
+  const review = startReview({ 'doc.md': '# Notes\n\n<details><summary>More</summary>\n\n- hidden item\n\n</details>\n\nAfter.\n' });
+  try {
+    review.open();
+    review.waitFor('document.querySelectorAll("#doc .block").length === 3');
+    expectEqual(evaluate('document.querySelectorAll("#doc details li").length'), 1, 'list items inside details');
+    expectEqual(evaluate('document.querySelectorAll("#doc li").length'), 1, 'list items on the page');
   } finally {
     review.stop();
   }
@@ -177,7 +190,9 @@ function checkCodeLineChange() {
 function startReview(docs) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-browser-'));
   for (const [name, content] of Object.entries(docs)) fs.writeFileSync(path.join(root, name), content);
-  const started = run(path.join(SCRIPTS, 'start-server.sh'), ['--project-dir', root]);
+  // --background: under CODEX_CI the launcher otherwise runs in the
+  // foreground and never returns.
+  const started = run(path.join(SCRIPTS, 'start-server.sh'), ['--project-dir', root, '--background']);
   const info = JSON.parse(started.stdout.trim().split('\n').pop());
   const docPath = name => path.join(root, name);
   for (const name of Object.keys(docs)) node('serve-doc.cjs', ['--session-dir', info.session_dir, docPath(name)]);

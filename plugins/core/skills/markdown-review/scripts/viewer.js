@@ -137,19 +137,20 @@
 
   // Fetched by revision number and hash, so the text always is the revision
   // /docs reported; the server answers 409 if history changed in between.
-  // Only successful loads are cached, so a failed one retries on the next
-  // revision notice.
+  // Returns {text, isLoaded}: isLoaded is this call's own outcome, so an
+  // overlapping successful load can't make a failed one look shown. Only
+  // successful loads are cached, so a failed one retries on the next notice.
   async function docText(doc) {
     const key = revisionKey(doc);
-    if (textCache.has(key)) return textCache.get(key);
+    if (textCache.has(key)) return { text: textCache.get(key), isLoaded: true };
     if (doc.revision === null) {
-      return '*' + doc.path + ' has no revisions yet — the agent needs to run serve-doc or revise.*';
+      return { text: '*' + doc.path + ' has no revisions yet — the agent needs to run serve-doc or revise.*', isLoaded: false };
     }
     const r = await fetch('/doc/' + doc.id + '/rev/' + doc.revision + '?sha256=' + doc.sha256);
-    if (!r.ok) return '*Failed to load revision ' + doc.revision + ' of ' + doc.path + ' (' + r.status + ')*';
+    if (!r.ok) return { text: '*Failed to load revision ' + doc.revision + ' of ' + doc.path + ' (' + r.status + ')*', isLoaded: false };
     const text = await r.text();
     textCache.set(key, text);
-    return text;
+    return { text: text, isLoaded: true };
   }
 
   // Markdown: first '# ' heading. Gherkin: the Feature name ('#' lines there
@@ -403,9 +404,10 @@
     const pane = $('#doc');
     const scrollTop = opts.preserveScroll ? pane.scrollTop : 0;
     closePopover();
-    const source = await docText(doc);
+    const loaded = await docText(doc);
+    const source = loaded.text;
     // A failed load shows an error, not the revision, so it can't be approved.
-    if (textCache.has(revisionKey(doc))) shownRevisions.set(doc.path, revisionKey(doc));
+    if (loaded.isLoaded) shownRevisions.set(doc.path, revisionKey(doc));
     else shownRevisions.delete(doc.path);
     const view = currentViewFor(doc.path);
     // Markdown and Gherkin source views show the revision itself, never a diff.
@@ -433,7 +435,7 @@
   // renders nothing (an HTML comment) or several elements.
   function renderRendered(pane, id, source) {
     pane.innerHTML = '';
-    marked.lexer(source).filter(token => token.type !== 'space').forEach(token => {
+    markdownBlocks(source).forEach(token => {
       const wrapper = document.createElement('div');
       wrapper.innerHTML = marked.parser([token]);
       pane.appendChild(wrapper);
@@ -606,9 +608,9 @@
     const entry = entries.find(e => e.revision === doc.revision - 1);
     if (!entry) return null;
     const baseDoc = { id: doc.id, path: doc.path, revision: entry.revision, sha256: entry.sha256 };
-    const source = await docText(baseDoc);
-    if (!textCache.has(revisionKey(baseDoc))) return null;
-    return { revision: entry.revision, source: source };
+    const loaded = await docText(baseDoc);
+    if (!loaded.isLoaded) return null;
+    return { revision: entry.revision, source: loaded.text };
   }
 
   async function revisionEntries(doc) {
@@ -624,6 +626,12 @@
     return renderMarkdownDiff(pane, id, baseSource, targetSource);
   }
 
+  // The block list both views render: non-space tokens, with HTML containers
+  // that span tokens grouped into one block.
+  function markdownBlocks(source) {
+    return groupHtmlContainers(marked.lexer(source).filter(token => token.type !== 'space'), MARKED_RENDER);
+  }
+
   // The target revision's anchors, rendered off-screen.
   function detachedAnchors(renderInto) {
     return renderInto(document.createElement('div'));
@@ -635,8 +643,7 @@
   }
 
   function renderMarkdownDiff(pane, id, baseSource, targetSource) {
-    const blocksOf = source => marked.lexer(source).filter(token => token.type !== 'space');
-    const tree = diffMarkdown(blocksOf(baseSource), blocksOf(targetSource), MARKED_RENDER);
+    const tree = diffMarkdown(markdownBlocks(baseSource), markdownBlocks(targetSource), MARKED_RENDER);
     const targetAnchors = detachedAnchors(container => renderRendered(container, id, targetSource));
     const anchors = [];
     pane.innerHTML = '';
