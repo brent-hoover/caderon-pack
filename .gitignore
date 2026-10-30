@@ -115,3 +115,6 @@ cython_debug/
 
 # git worktrees (managed locally)
 .worktrees/
+
+# markdown-review sessions
+.md-review/
