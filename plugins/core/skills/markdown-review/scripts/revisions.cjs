@@ -21,6 +21,7 @@ const REVISION_NUMBER_WIDTH = 4;
 // 5s of 50ms retries outlasts any live holder; a longer wait means it is stuck.
 const LOCK_RETRY_MS = 50;
 const LOCK_TIMEOUT_MS = 5000;
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 
 function revisionDir(docPath) {
   return path.join(path.dirname(docPath), REVISIONS_DIR_NAME, path.basename(docPath));
@@ -29,6 +30,7 @@ function revisionDir(docPath) {
 // Only complete lines: the last line may be an append in flight, or one a
 // dead writer left half-written (the next recordRevision truncates it).
 function readIndex(docPath) {
+  refuseSymlinks(docPath);
   let content;
   try {
     content = fs.readFileSync(indexFile(docPath), 'utf-8');
@@ -37,17 +39,23 @@ function readIndex(docPath) {
     throw e;
   }
   const completeLines = content.slice(0, content.lastIndexOf('\n') + 1).split('\n').filter(Boolean);
-  return completeLines.map(line => JSON.parse(line));
+  return completeLines.map((line, i) => parseIndexEntry(line, indexFile(docPath), i + 1));
 }
 
 function readRevision(docPath, revision) {
-  return fs.readFileSync(revisionFile(docPath, revision), 'utf-8');
+  refuseSymlinks(docPath);
+  const file = revisionFile(docPath, revision);
+  if (fs.lstatSync(file).isSymbolicLink()) {
+    throw new Error('refusing to follow symlink in revision history: ' + file);
+  }
+  return fs.readFileSync(file, 'utf-8');
 }
 
 // Records the doc's current content as the next revision, unless it matches
 // the latest one. Returns {status: 'revised'|'unchanged', revision}.
 function recordRevision(docPath) {
   const dir = revisionDir(docPath);
+  refuseSymlinks(docPath);
   fs.mkdirSync(dir, { recursive: true });
   acquireLock(dir);
   try {
@@ -85,7 +93,7 @@ function writeRevisionFile(docPath, revision, content) {
   const tempPath = finalPath + TEMP_SUFFIX;
   const fd = fs.openSync(tempPath, 'w');
   try {
-    fs.writeSync(fd, content);
+    fs.writeFileSync(fd, content); // unlike writeSync, writes every byte
     fs.fsyncSync(fd);
   } finally {
     fs.closeSync(fd);
@@ -106,7 +114,9 @@ function acquireLock(dir) {
       if (e.code !== 'EEXIST') throw e;
     }
     const holder = readLockHolder(lockPath);
-    if (holder !== null && !isProcessAlive(holder)) {
+    // Re-read after the liveness check: a holder that released the lock and
+    // exited in between is dead but no longer holds anything.
+    if (holder !== null && !isProcessAlive(holder) && readLockHolder(lockPath) === holder) {
       throw new Error('stale revision lock ' + lockPath + ' from dead pid ' + holder +
         ' — check no revise is running, delete the lock file, and retry');
     }
@@ -166,11 +176,43 @@ function removeLeftoverTemps(dir) {
   }
 }
 
+// History is committable, so a checked-out .revisions/ is untrusted: an index
+// entry becomes part of a file path and must be a plain positive integer.
+function parseIndexEntry(line, file, lineNumber) {
+  const entry = JSON.parse(line);
+  const isValid = Number.isSafeInteger(entry.revision) && entry.revision > 0 &&
+    typeof entry.sha256 === 'string' && SHA256_HEX_PATTERN.test(entry.sha256);
+  if (!isValid) {
+    throw new Error('invalid revision index entry in ' + file + ' line ' + lineNumber + ': ' + line +
+      ' — fix or delete the line');
+  }
+  return entry;
+}
+
+// Appends, truncates and mkdir follow symlinks, and a symlink committed into
+// .revisions/ could point them at any file the user can write.
+function refuseSymlinks(docPath) {
+  const dir = revisionDir(docPath);
+  for (const p of [path.dirname(dir), dir, path.join(dir, INDEX_FILE_NAME)]) {
+    let stat;
+    try {
+      stat = fs.lstatSync(p);
+    } catch (e) {
+      if (e.code === 'ENOENT') continue;
+      throw e;
+    }
+    if (stat.isSymbolicLink()) throw new Error('refusing to follow symlink in revision history: ' + p);
+  }
+}
+
 function indexFile(docPath) {
   return path.join(revisionDir(docPath), INDEX_FILE_NAME);
 }
 
 function revisionFile(docPath, revision) {
+  if (!Number.isSafeInteger(revision) || revision <= 0) {
+    throw new Error('invalid revision number ' + JSON.stringify(revision) + ' for ' + docPath);
+  }
   const name = String(revision).padStart(REVISION_NUMBER_WIDTH, '0') + REVISION_EXTENSION;
   return path.join(revisionDir(docPath), name);
 }

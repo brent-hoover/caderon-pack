@@ -119,3 +119,56 @@ test('recording a missing doc throws with its path', () => {
 
   assert.throws(() => recordRevision(doc), new RegExp('no such file: ' + escapeRegExp(doc)));
 });
+
+// History is committable, so a checked-out .revisions/ is untrusted input.
+test('a symlinked index is refused', () => {
+  const doc = tempDoc('# Plan\n');
+  recordRevision(doc);
+  const indexPath = path.join(revisionDir(doc), 'index.jsonl');
+  const outside = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-outside-')), 'index.jsonl');
+  fs.writeFileSync(outside, fs.readFileSync(indexPath));
+  fs.rmSync(indexPath);
+  fs.symlinkSync(outside, indexPath);
+  fs.writeFileSync(doc, '# Plan\n\nChanged.\n');
+  const outsideBefore = fs.readFileSync(outside, 'utf-8');
+
+  assert.throws(() => recordRevision(doc), /symlink/);
+  assert.strictEqual(fs.readFileSync(outside, 'utf-8'), outsideBefore);
+});
+
+test('a symlinked revisions directory is refused', () => {
+  const doc = tempDoc('# Plan\n');
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-elsewhere-'));
+  fs.symlinkSync(elsewhere, path.join(path.dirname(doc), '.revisions'));
+
+  assert.throws(() => recordRevision(doc), /symlink/);
+  assert.deepStrictEqual(fs.readdirSync(elsewhere), []);
+});
+
+test('an index entry with a non-integer revision is rejected', () => {
+  const doc = tempDoc('# Plan\n');
+  recordRevision(doc);
+  const indexPath = path.join(revisionDir(doc), 'index.jsonl');
+  fs.appendFileSync(indexPath, JSON.stringify({ revision: '../../escape', timestamp: 1, sha256: 'ab' }) + '\n');
+
+  assert.throws(() => readIndex(doc), /invalid revision index entry/);
+});
+
+test('reading a non-integer revision is rejected', () => {
+  const doc = tempDoc('# Plan\n');
+  recordRevision(doc);
+
+  assert.throws(() => readRevision(doc, '../index'), /invalid revision number/);
+});
+
+test('a symlinked revision file is refused', () => {
+  const doc = tempDoc('# Plan\n');
+  recordRevision(doc);
+  const revisionPath = path.join(revisionDir(doc), '0001.rev');
+  const outside = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-outside-')), 'secret.txt');
+  fs.writeFileSync(outside, 'not part of the doc\n');
+  fs.rmSync(revisionPath);
+  fs.symlinkSync(outside, revisionPath);
+
+  assert.throws(() => readRevision(doc, 1), /symlink/);
+});
