@@ -56,16 +56,23 @@ function describeChange(base, target, render) {
 }
 
 function diffListItems(baseItems, targetItems, render) {
-  const isSame = (a, b) => render.blocks(clone(a.tokens)) === render.blocks(clone(b.tokens));
+  const isSame = (a, b) => itemKey(a, render) === itemKey(b, render);
   const ops = pairChanges(diffSequence(baseItems, targetItems, isSame), () => 'item');
   return ops.map(op => {
     const node = { op: op.op, base: op.a, target: op.b, baseIndex: op.aIndex, targetIndex: op.bIndex };
     if (op.op !== 'changed') return node;
     const baseInline = itemInlineTokens(op.a);
     const targetInline = itemInlineTokens(op.b);
-    if (baseInline === null || targetInline === null) return Object.assign(node, { replaced: true });
+    // A ticked or unticked checkbox lives in item metadata, not in its words.
+    const isCheckboxChange = op.a.task !== op.b.task || op.a.checked !== op.b.checked;
+    if (baseInline === null || targetInline === null || isCheckboxChange) return Object.assign(node, { replaced: true });
     return Object.assign(node, { words: diffWords(baseInline, targetInline, render) });
   });
+}
+
+// marked keeps a task item's checkbox in `task`/`checked`, outside its tokens.
+function itemKey(item, render) {
+  return JSON.stringify([item.task, item.checked, render.blocks(clone(item.tokens))]);
 }
 
 // A simple item holds one text or paragraph block; nested lists and multi-block
@@ -84,7 +91,8 @@ function diffTable(base, target, render) {
   };
   const cellsByPosition = (aCells, bCells) =>
     Array.from({ length: Math.max(aCells.length, bCells.length) }, (_, i) => cellNode(aCells[i], bCells[i]));
-  const renderRow = row => row.map(cell => render.inline(clone(cell.tokens))).join('|');
+  // An array, not a joined string: cell text can itself contain the separator.
+  const renderRow = row => JSON.stringify(row.map(cell => render.inline(clone(cell.tokens))));
   const isSameRow = (a, b) => renderRow(a) === renderRow(b);
   const rows = pairChanges(diffSequence(base.rows, target.rows, isSameRow), () => 'row').map(op => {
     const node = { op: op.op, base: op.a, target: op.b, baseIndex: op.aIndex, targetIndex: op.bIndex };

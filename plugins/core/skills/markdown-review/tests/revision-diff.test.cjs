@@ -147,6 +147,22 @@ test('a blockquote edit is diffed inside the quote', () => {
     [{ op: 'removed', text: 'point.' }, { op: 'added', text: 'point, revised.' }]);
 });
 
+test('a checked task item is a changed item', () => {
+  const tree = diff('- [ ] Ship\n- [ ] Test\n', '- [x] Ship\n- [ ] Test\n');
+
+  assert.strictEqual(tree.isIdentical, false);
+  assert.deepStrictEqual(tree.nodes[0].items.map(item => item.op), ['changed', 'equal']);
+  assert.strictEqual(tree.nodes[0].items[0].replaced, true);
+});
+
+test('moving an escaped pipe between cells is a changed row', () => {
+  const header = '| a | b |\n|---|---|\n';
+  const tree = diff(header + '| x\\|y | z |\n', header + '| x | y\\|z |\n');
+
+  assert.deepStrictEqual(tree.nodes[0].rows.map(row => row.op), ['changed']);
+  assert.deepStrictEqual(tree.nodes[0].rows[0].cells.map(cell => cell.op), ['changed', 'changed']);
+});
+
 const LOGIN_FEATURE = 'Feature: Login\n\n' +
   '  Scenario: Good password\n    Given a user\n    Then the user sees the dashboard\n\n' +
   '  Scenario: Bad password\n    Then an error shows\n';
