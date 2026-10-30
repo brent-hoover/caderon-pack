@@ -173,9 +173,11 @@ on revision 1. Delivery is at-least-once: rarely, an event may be delivered
 twice.
 
 An `approve` event means the user signed off on that doc. The approval is
-current only if its `revision` is the doc's latest revision and no comments
-on the doc follow it — then proceed without re-asking. If you have revised
-the doc since, the approval is stale; ask again.
+current only if its `revision` is the doc's latest revision, its `sha256`
+matches that revision's entry in `.revisions/<doc file name>/index.jsonl`
+(history recreated from a checkout can reuse a number for other content), and
+no comments on the doc follow it — then proceed without re-asking. If you
+have revised the doc since, the approval is stale; ask again.
 
 ## Health check (before every URL mention or doc push)
 

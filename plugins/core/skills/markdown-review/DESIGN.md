@@ -253,7 +253,8 @@ that doc's comments since its last one
 
 `revision` (added 2026-10-30; absent means revision 1) is the revision the
 user was viewing; anchors refer to it. An approval counts only while its
-`revision` is the doc's latest and no comment on the doc follows it.
+`revision` and `sha256` are the doc's latest index entry and no comment on
+the doc follows it.
 Approvals without `revision` (older viewers) aren't tied to content and the
 viewer ignores them.
 

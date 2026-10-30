@@ -39,7 +39,7 @@ test('SKILL.md documents the revision field on events', () => {
     assert.ok(exampleLines.some(line => line.includes('"type":"' + type + '"') && line.includes('"revision":')),
       type + ' example lacks "revision"');
   }
-  assert.match(skillProse, /approval is current only if its `revision` is the doc's latest revision/i);
+  assert.match(skillProse, /approval is current only if its `revision` is the doc's latest revision, its `sha256` matches/i);
 });
 
 test('DESIGN.md covers revisions, history storage and the rich diff', () => {
