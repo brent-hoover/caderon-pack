@@ -7,7 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const SCRIPTS = path.join(__dirname, '..', 'scripts');
-const { diffMarkdown, diffGherkin, diffLines } = require(path.join(SCRIPTS, 'revision-diff.cjs'));
+const { diffMarkdown, diffGherkin, diffLines, carryForward } = require(path.join(SCRIPTS, 'revision-diff.cjs'));
 const { parseGherkinBlocks } = require(path.join(SCRIPTS, 'gherkin.cjs'));
 
 // A plain require() of marked.min.js returns nothing under the repo's
@@ -177,5 +177,64 @@ test('a renamed scenario pairs as changed', () => {
   const tree = gherkinDiff(LOGIN_FEATURE, LOGIN_FEATURE.replace('Scenario: Bad password', 'Scenario: Wrong password'));
 
   assert.deepStrictEqual(tree.nodes.map(n => n.op), ['equal', 'equal', 'changed']);
+});
+
+// ===== comment carry-forward =====
+// Scenarios: feature-work/markdown-review-history/scenarios/comments-carry-forward.feature
+// (logic seam). Anchors stand in for what the viewer reads off a rendered revision.
+
+const COMMENTED = 'The cache expires after 30 seconds.';
+const REVISION_1 = '# Cache\n\n' + COMMENTED + '\n\nEntries are evicted LRU.\n';
+const REVISION_1_ANCHORS = [
+  { index: 0, quote: 'Cache' },
+  { index: 1, quote: COMMENTED },
+  { index: 2, quote: 'Entries are evicted LRU.' }
+];
+const COMMENT_ON_REVISION_1 = { type: 'comment', view: 'rendered', revision: 1, blockIndex: 1, quote: COMMENTED, comment: 'too short' };
+
+// Revision 1 and one later revision; the diff chain is the single step 1→2.
+function carriedTo(revision2, event) {
+  const chain = [diff(REVISION_1, revision2).nodes];
+  const requestedRevisions = [];
+  const outcome = carryForward(event,
+    (revision) => { requestedRevisions.push(revision); return REVISION_1_ANCHORS; },
+    () => chain);
+  return { outcome, requestedRevisions };
+}
+
+test('A comment on changed text is shown as addressed', () => {
+  const { outcome } = carriedTo(REVISION_1.replace('30 seconds', '60 seconds'), COMMENT_ON_REVISION_1);
+
+  assert.deepStrictEqual(outcome, { state: 'addressed', revision: 2, index: 1 });
+});
+
+test('A comment on unchanged text is shown as still open', () => {
+  const { outcome } = carriedTo(REVISION_1.replace('evicted LRU', 'evicted FIFO'), COMMENT_ON_REVISION_1);
+
+  assert.deepStrictEqual(outcome, { state: 'open', index: 1 });
+});
+
+test('A comment on removed text is shown as addressed by removal', () => {
+  const { outcome } = carriedTo(REVISION_1.replace(COMMENTED + '\n\n', ''), COMMENT_ON_REVISION_1);
+
+  assert.deepStrictEqual(outcome, { state: 'removed', revision: 2, afterIndex: 0 });
+});
+
+test('A comment from an older viewer without a revision is treated as revision 1', () => {
+  const event = Object.assign({}, COMMENT_ON_REVISION_1);
+  delete event.revision;
+
+  const { outcome, requestedRevisions } = carriedTo(REVISION_1.replace('30 seconds', '60 seconds'), event);
+
+  assert.deepStrictEqual(requestedRevisions, [1]);
+  assert.deepStrictEqual(outcome, { state: 'addressed', revision: 2, index: 1 });
+});
+
+test('A comment whose anchor cannot be found in its own revision is shown at doc level', () => {
+  const event = Object.assign({}, COMMENT_ON_REVISION_1, { quote: 'Text that was never in revision 1.' });
+
+  const { outcome } = carriedTo(REVISION_1, event);
+
+  assert.deepStrictEqual(outcome, { state: 'unanchored' });
 });
 

@@ -167,6 +167,86 @@ function runsOf(pieces) {
   return runs;
 }
 
+// Where a comment made on an earlier revision stands now. `anchorsFor(revision)`
+// returns that revision's anchors ([{index, quote}], as the viewer renders
+// them); `diffChainFor(view, fromRevision)` returns the top-level nodes of each
+// adjacent diff from that revision to the latest, built for the view the
+// comment was made in (rendered → diffMarkdown, gherkin → diffGherkin,
+// source → diffLines). Comments from viewers that predate revisions carry no
+// revision and were made on revision 1.
+// Returns {state: 'unanchored'} or a mapForward result.
+function carryForward(event, anchorsFor, diffChainFor) {
+  const revision = event.revision !== undefined ? event.revision : 1;
+  const view = commentView(event);
+  const anchor = resolveAnchor(event, anchorsFor(revision));
+  if (!anchor) return { state: 'unanchored' };
+  // Source anchors are 1-based line numbers; diff nodes index from 0.
+  const lineOffset = view === 'source' ? 1 : 0;
+  const outcome = mapForward(diffChainFor(view, revision), anchor.index - lineOffset, revision);
+  if (outcome.index !== undefined) outcome.index += lineOffset;
+  if (outcome.afterIndex !== undefined && outcome.afterIndex >= 0) outcome.afterIndex += lineOffset;
+  return outcome;
+}
+
+// Follows one top-level index of revision `fromRevision` through each step of
+// the diff chain. Returns {state: 'open', index}, {state: 'addressed',
+// revision, index} (revision = first one that changed it), or {state:
+// 'removed', revision, afterIndex} (afterIndex = nearest earlier surviving
+// block in the latest revision, or -1).
+function mapForward(diffChain, index, fromRevision) {
+  let current = index;
+  let addressedIn = null;
+  for (let step = 0; step < diffChain.length; step++) {
+    const nodes = diffChain[step];
+    const position = nodes.findIndex(node => node.baseIndex === current);
+    const node = nodes[position];
+    const revision = fromRevision + step + 1;
+    if (node.op === 'removed') {
+      return { state: 'removed', revision, afterIndex: survivorBefore(diffChain, step, position, fromRevision) };
+    }
+    if (node.op === 'changed' && addressedIn === null) addressedIn = revision;
+    current = node.targetIndex;
+  }
+  if (addressedIn === null) return { state: 'open', index: current };
+  return { state: 'addressed', revision: addressedIn, index: current };
+}
+
+// The latest-revision index of the nearest block before nodes[position] that
+// exists after this step, followed through the remaining steps.
+function survivorBefore(diffChain, step, position, fromRevision) {
+  const nodes = diffChain[step];
+  for (let p = position - 1; p >= 0; p--) {
+    if (nodes[p].targetIndex === undefined) continue;
+    const rest = mapForward(diffChain.slice(step + 1), nodes[p].targetIndex, fromRevision + step + 1);
+    return rest.state === 'removed' ? rest.afterIndex : rest.index;
+  }
+  return -1;
+}
+
+// The anchor a comment was made on, among one revision's anchors: matched by
+// quote, then by occurrence among identical quotes, then by the nearest
+// index. null when the quote matches nothing.
+function resolveAnchor(event, anchors) {
+  const matches = anchors.filter(anchor => anchor.quote === event.quote);
+  if (event.occurrence !== undefined && matches[event.occurrence]) return matches[event.occurrence];
+  const original = anchorIndexOf(event);
+  let nearest = null;
+  matches.forEach(anchor => {
+    if (nearest === null || Math.abs(anchor.index - original) < Math.abs(nearest.index - original)) nearest = anchor;
+  });
+  return nearest;
+}
+
+// Doc-level comments have scope 'doc'; events from pre-view viewers are 'rendered'.
+function commentView(event) {
+  if (event.scope === 'doc') return 'doc';
+  return event.view || 'rendered';
+}
+
+function anchorIndexOf(event) {
+  return commentView(event) === 'source' ? event.line : event.blockIndex;
+}
+
 // Longest common subsequence of two arrays. Returns ops in order:
 // { op: 'equal'|'removed'|'added', a?, b?, aIndex?, bIndex? }. Within a gap,
 // removals come before additions, which pairChanges relies on. O(n·m), which
@@ -238,5 +318,8 @@ function clone(value) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { diffMarkdown, diffGherkin, diffLines, diffSequence, pairChanges, diffWords };
+  module.exports = {
+    diffMarkdown, diffGherkin, diffLines, diffSequence, pairChanges, diffWords,
+    carryForward, mapForward, resolveAnchor, commentView, anchorIndexOf
+  };
 }

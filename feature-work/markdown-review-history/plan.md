@@ -240,7 +240,7 @@ Extra unit tests:
 
 ### 6. Comment carry-forward logic
 
-**Status:** ☐
+**Status:** ☑
 
 **What:** Add these functions to `revision-diff.cjs`:
 
@@ -590,3 +590,5 @@ All 38 scenarios are covered, with no gaps.
 - 2026-10-30: Totals from step 4 on shifted by 2, for the server tests added after roborev job
   4534 (recreated history is announced, unindexed revision files are not served). Viewer approvals
   now track the revision number, ahead of step 10.
+- 2026-10-30: `mapForward` takes the starting revision as a third argument (it reports revision
+  numbers), and `carryForward` converts 1-based Source-view lines to 0-based diff indexes.
