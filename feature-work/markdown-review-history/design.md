@@ -168,8 +168,11 @@ because a plain `require` returns nothing under the repo's `"type": "module"` (v
 - **`diffSequence(a, b, isSame)`** — an LCS over two arrays. It returns
   `[{op: 'equal'|'removed'|'added', a?, b?}]`. O(n·m) is fine for a few KB.
 - **`pairChanges(ops)`** — within a run of `removed` items directly followed by a run of `added`
-  items, pairs them one-for-one in order into `changed`, when both have the same kind (same token
-  type, or same Gherkin block kind). Anything left over stays `removed` or `added`.
+  items, pairs them into `changed`. A single removal and a single addition of the same kind (same
+  token type, or same Gherkin block kind) always pair. In longer runs, items pair in order (by LCS)
+  only with a same-kind item that shares at least 30% of its distinct words. Pairing by position
+  mismatched every block after a dropped or inserted one. Anything left over stays `removed` or
+  `added`.
 - **Equality is by rendered output, at every level.** Two units are the same when they render to
   identical HTML. This covers top-level blocks, list items, table rows and cells, and blockquote
   children. Each revision is rendered with its own `tokens.links`, the document's reference-link
@@ -485,3 +488,6 @@ and revise as a CLI.
   - Removal placement is keyed to a `removed` node actually being in the shown diff.
 - 2026-10-30: Applied roborev job 4524: the descent table now uses rendered-output equality for list
   items and table rows, matching the equality rule.
+- 2026-10-30: `pairChanges` pairs longer runs by kind plus word similarity, not by position. Found
+  while checking the step 8 rendering, where an edited code block after a removed paragraph showed
+  as a whole removal plus an addition.

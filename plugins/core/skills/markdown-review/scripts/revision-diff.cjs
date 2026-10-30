@@ -16,6 +16,11 @@
 // inside an emphasis run, a code span or a link.
 const ATOMIC_INLINE_TYPES = ['strong', 'em', 'del', 'codespan', 'link', 'image'];
 
+// Share of distinct words (Jaccard) two blocks need in common to pair as an
+// edit in a longer run. 0.3 still pairs "retries 3" with "retries 5" while
+// keeping unrelated sentences apart.
+const PAIRING_SIMILARITY = 0.3;
+
 // Top-level diff of two revisions' non-space block tokens.
 function diffMarkdown(baseBlocks, targetBlocks, render) {
   const nodes = diffBlocks(baseBlocks, targetBlocks, render);
@@ -299,16 +304,36 @@ function pairChanges(ops, kindOf) {
   return paired;
 }
 
+// One removal against one addition of the same kind is always an edit in place.
+// In longer runs, pairing by position mismatches as soon as a block is dropped
+// or inserted, so items pair (in order, by LCS) only with a same-kind item that
+// shares enough of its words.
 function pairRuns(removed, added, kindOf) {
-  const out = [];
-  const pairs = Math.min(removed.length, added.length);
-  for (let k = 0; k < pairs; k++) {
-    const r = removed[k];
-    const a = added[k];
-    if (kindOf(r.a) === kindOf(a.b)) out.push({ op: 'changed', a: r.a, b: a.b, aIndex: r.aIndex, bIndex: a.bIndex });
-    else out.push(r, a);
+  const toChanged = (r, a) => ({ op: 'changed', a: r.a, b: a.b, aIndex: r.aIndex, bIndex: a.bIndex });
+  if (removed.length === 1 && added.length === 1) {
+    return kindOf(removed[0].a) === kindOf(added[0].b) ? [toChanged(removed[0], added[0])] : [removed[0], added[0]];
   }
-  return out.concat(removed.slice(pairs), added.slice(pairs));
+  const isPair = (r, a) => kindOf(r.a) === kindOf(a.b) && wordSimilarity(textOf(r.a), textOf(a.b)) >= PAIRING_SIMILARITY;
+  return diffSequence(removed, added, isPair).map(op => (op.op === 'equal' ? toChanged(op.a, op.b) : op.a || op.b));
+}
+
+function wordSimilarity(a, b) {
+  const wordsA = new Set(a.split(/\s+/).filter(Boolean));
+  const wordsB = new Set(b.split(/\s+/).filter(Boolean));
+  const union = new Set([...wordsA, ...wordsB]);
+  if (union.size === 0) return 1;
+  let shared = 0;
+  wordsA.forEach(word => { if (wordsB.has(word)) shared++; });
+  return shared / union.size;
+}
+
+// The comparable text of anything pairChanges sees: a line, a marked token,
+// a table row (array of cells), or a Gherkin block.
+function textOf(item) {
+  if (typeof item === 'string') return item;
+  if (Array.isArray(item)) return item.map(cell => cell.text).join(' ');
+  if (item.lines) return item.lines.map(line => line.text).join('\n');
+  return item.raw;
 }
 
 function withoutSpace(tokens) {

@@ -163,6 +163,23 @@ test('moving an escaped pipe between cells is a changed row', () => {
   assert.deepStrictEqual(tree.nodes[0].rows[0].cells.map(cell => cell.op), ['changed', 'changed']);
 });
 
+test('an edited block pairs with its own kind past a removal and additions', () => {
+  const tree = diff('Legacy mode is supported.\n\n```\na = 1\nb = 2\n```\n',
+    '```\na = 1\nb = 3\n```\n\n## Risks\n\nPolling may miss writes.\n');
+
+  const byOp = op => tree.nodes.filter(n => n.op === op).map(n => n.kind);
+  assert.deepStrictEqual(byOp('changed'), ['code']);
+  assert.deepStrictEqual(byOp('removed'), ['paragraph']);
+  assert.deepStrictEqual(byOp('added'), ['heading', 'paragraph']);
+});
+
+test('dissimilar same-kind blocks in a longer run are not paired', () => {
+  const tree = diff('Keep this.\n\nLegacy mode is supported.\n\nOld second line.\n',
+    'Keep this.\n\nPolling may miss writes.\n\nAnother new line here.\n\nThird addition.\n');
+
+  assert.ok(tree.nodes.every(n => n.op !== 'changed'));
+});
+
 const LOGIN_FEATURE = 'Feature: Login\n\n' +
   '  Scenario: Good password\n    Given a user\n    Then the user sees the dashboard\n\n' +
   '  Scenario: Bad password\n    Then an error shows\n';
