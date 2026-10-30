@@ -57,22 +57,25 @@ commits, and roborev reviews each one. Paths below are relative to
 
 ### 1. History storage: `revisions.cjs`
 
+**Status:** ☐
+
 **What:** Add `scripts/revisions.cjs` exporting `recordRevision(docPath)`, `readIndex(docPath)`,
 `readRevision(docPath, n)` and `revisionDir(docPath)`.
 
 It follows design steps 1–6:
 
-- **Lock:** `wx` on `lock` with the pid. Retry every 50ms, up to 5s. Take over a lock whose pid is
-  dead.
-- **Cleanup:** remove leftover `*.tmp` files.
+- **Lock:** `wx` on `lock` with the pid. Retry every 50ms, up to 5s, while the holder is alive.
+  A lock held by a dead pid fails loudly; it is never taken over.
+- **Repair and cleanup:** truncate a partial index tail, and remove leftover `*.tmp` files.
 - **Change check:** compare the SHA-256 hash with the latest revision.
 - **Write:** write a temp file, `fsync` it, then rename it to `NNNN.rev`.
 - **Index:** append one line to the index.
 
 Add `tests/revisions.test.cjs` with these tests:
 
-- `concurrent revises produce distinct revisions`
-- `a lock held by a dead pid is taken over`
+- `concurrent revises record exactly one new revision`
+- `a lock held by a dead pid fails with its path`
+- `an interrupted index append is repaired`
 - `a revision file only appears complete`
 - `unchanged content returns the latest revision`
 - `recording a missing doc throws with its path`
@@ -83,10 +86,12 @@ Add `tests/revisions.test.cjs` with these tests:
 
 **Verify:**
 
-- `S` with the 5 names above: all show `✔`.
-- `T`: 62 pass, 0 fail.
+- `S` with the 6 names above: all show `✔`.
+- `T`: 63 pass, 0 fail.
 
 ### 2. Recording CLIs: `revise.cjs` and `serve-doc.cjs`
+
+**Status:** ☐
 
 **What:**
 
@@ -116,9 +121,11 @@ The session-liveness and discovery code is ~20 lines that `revise.cjs` duplicate
 **Verify:**
 
 - `S` with the 6 scenario names: all show `✔`.
-- `T`: 68 pass, 0 fail.
+- `T`: 69 pass, 0 fail.
 
 ### 3. Server serves revisions (with a viewer handler)
+
+**Status:** ☐
 
 **What:**
 
@@ -154,21 +161,23 @@ The session-liveness and discovery code is ~20 lines that `revise.cjs` duplicate
 **Verify:**
 
 - `S` with the 4 scenario names plus the deletion test: all show `✔`.
-- `T`: 73 pass, 0 fail.
+- `T`: 74 pass, 0 fail.
 
 **Note:** This session reviews docs with the **installed** skill (core 1.7.0 in the plugin cache).
 Worktree changes don't affect it.
 
 ### 4. Diff core for markdown: `revision-diff.cjs`
 
+**Status:** ☐
+
 **What:** Add `scripts/revision-diff.cjs`, dual-loaded like `gherkin.cjs`, with these functions:
 
 - `diffSequence`
 - `pairChanges`
-- `normalizeRaw`
+- `isSameBlock`: rendered-HTML equality, using each revision's link definitions
 - `diffWords`, which treats `strong`, `em`, `del`, `codespan`, `link` and `image` as atomic.
-- `diffMarkdown`, which descends through list, table (rows via `diffSequence`) and code, and
-  returns a diff tree with `isIdentical`.
+- `diffMarkdown`, which descends through list, table (rows via `diffSequence`), code and
+  blockquote (nested `diffMarkdown`), and returns a diff tree with `isIdentical`.
 
 Add `tests/revision-diff.test.cjs`. It loads `marked.min.js` through `vm`. Each markdown scenario
 is one test that asserts on the **diff tree**:
@@ -186,6 +195,8 @@ Extra unit tests:
 - `emphasis is diffed as one word`
 - `a link is diffed as one word`
 - `an inserted table row does not mark later rows`
+- `a changed reference-link definition marks the paragraph`
+- `a blockquote edit is diffed inside the quote`
 
 **Why:** This is the core of the rich diff, and it can be tested without a browser.
 
@@ -201,10 +212,12 @@ Extra unit tests:
 
 **Verify:**
 
-- `S` with the 7 scenario names and the 3 unit names: all show `✔`.
-- `T`: 83 pass, 0 fail.
+- `S` with the 7 scenario names and the 5 unit names: all show `✔`.
+- `T`: 86 pass, 0 fail.
 
 ### 5. Diff for Gherkin and plain text
+
+**Status:** ☐
 
 **What:**
 
@@ -223,9 +236,11 @@ Extra unit tests:
 **Verify:**
 
 - `S` with those 3 names: all show `✔`.
-- `T`: 86 pass, 0 fail.
+- `T`: 89 pass, 0 fail.
 
 ### 6. Comment carry-forward logic
+
+**Status:** ☐
 
 **What:** Add these functions to `revision-diff.cjs`:
 
@@ -261,9 +276,11 @@ Add the tests:
 **Verify:**
 
 - `S` with the 5 scenario names: all show `✔`.
-- `T`: 91 pass, 0 fail.
+- `T`: 94 pass, 0 fail.
 
 ### 7. Viewer on revisions and per-block rendering (no behaviour change)
+
+**Status:** ☐
 
 **What:**
 
@@ -289,12 +306,14 @@ steps 8–10 only add to it.
 
 **Verify:**
 
-- `T`: 91 pass, 0 fail.
+- `T`: 94 pass, 0 fail.
 - `tests/browser/run.sh --smoke` prints `ok smoke` and exits 0.
 - Manually, in the operator's browser: comments on an existing doc still attach to the right
   blocks.
 
 ### 8. Diff rendering
+
+**Status:** ☐
 
 **What:** In `viewer.js` and `viewer.html`:
 
@@ -334,9 +353,11 @@ Extend `run.sh` with one browser check per `rich-diff` scenario, named after it.
 **Verify:**
 
 - `tests/browser/run.sh` prints `ok <name>` for all 9 and `ok smoke`, and exits 0.
-- `T`: 91 pass, 0 fail.
+- `T`: 94 pass, 0 fail.
 
 ### 9. Revision navigation
+
+**Status:** ☐
 
 **What:** In `viewer.js` and `viewer.html`:
 
@@ -368,9 +389,11 @@ file before the page loads.
 **Verify:**
 
 - `tests/browser/run.sh` prints `ok` for those 7 plus every earlier check, and exits 0.
-- `T`: 91 pass, 0 fail.
+- `T`: 94 pass, 0 fail.
 
 ### 10. Revision-aware feedback and carried-forward comments
+
+**Status:** ☐
 
 **What:** In `viewer.js`:
 
@@ -406,9 +429,11 @@ Extend `run.sh`:
 **Verify:**
 
 - `tests/browser/run.sh` prints `ok` for those 9 plus every earlier check, and exits 0.
-- `T`: 91 pass, 0 fail.
+- `T`: 94 pass, 0 fail.
 
 ### 11. Skill docs, version bump, traceability
+
+**Status:** ☐
 
 **What:**
 
@@ -421,6 +446,7 @@ Extend `run.sh`:
     revision is the latest.
   - Add a note on `.revisions/`: history is committable, and deleted text stays in it.
   - Add an upgrade note about reloading open tabs.
+  - Add the stale-lock recovery step: confirm no revise is running, then delete the lock file.
 - **`DESIGN.md`:** add sections on revisions, history storage and the rich diff, and update the
   layout list.
 - **Version:** bump `version` to `1.8.0` in `plugins/core/.claude-plugin/plugin.json` and
@@ -447,10 +473,12 @@ it makes scenario traceability a test.
 
 - `S` with the 3 scenario names, the `DESIGN.md` check and `every scenario has a test`: all show
   `✔`.
-- `T`: 96 pass, 0 fail.
+- `T`: 99 pass, 0 fail.
 - `M` exits 0.
 
 ### 12. End-to-end dogfood
+
+**Status:** ☐
 
 **What:** Run the worktree copy of the skill (`plugins/core/skills/markdown-review/scripts/`)
 against this feature's `plan.md`:
@@ -532,12 +560,6 @@ All 38 scenarios are covered, with no gaps.
 - **History on disk:** `.revisions/` directories written during dogfooding are plain files. Delete
   them if they aren't wanted; nothing else reads them.
 
-## Out of scope for this plan
-
-- Everything under the design's Out of scope, including the sharing feature (kata `jf1t`).
-- Updating the installed plugin cache. That happens through the normal plugin update after merge.
-- Pushing, or opening a PR. Both need the operator's approval when the time comes.
-
 ## Change log
 
 - 2026-10-30: Initial draft (Brent Hoover)
@@ -553,3 +575,10 @@ All 38 scenarios are covered, with no gaps.
     and the watcher in `run.sh`.
   - Feature-file headers are filled in step 11.
   - Noted that `resolveAnchor` widens `revision-diff.cjs`.
+- 2026-10-30: Applied roborev job 4516.
+  - Added a **Status** field to each step.
+  - Removed the scope section; the design's Out of scope is the single home for it.
+  - Step 1 tests follow the fail-loud stale lock, the repair of an interrupted index append, and
+    the expectation of one new revision under concurrency.
+  - Step 4 uses rendered-HTML block equality, and adds link-definition and blockquote tests.
+  - Totals updated.

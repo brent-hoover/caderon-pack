@@ -9,6 +9,13 @@ updated: 2026-10-30
 
 # Markdown Review — doc history and change diffs — Problem Statement
 
+## User Story
+
+As the operator reviewing agent-authored docs in the markdown-review viewer,
+I want to see exactly what changed between the versions the agent hands me, and whether my
+comments were addressed,
+so that I can re-review and approve a revised doc without re-reading all of it.
+
 ## Context
 
 The `markdown-review` skill (`plugins/core/skills/markdown-review/`) serves agent-authored docs to
@@ -64,6 +71,10 @@ SKILL.md asks users to gitignore. A server restart creates a new session dir.
   that content. Today's session dir is gitignored (`.md-review/`); history has to be committable,
   so it can't live only there. The viewer is session-key-gated and binds to localhost by default,
   though `--host` can bind beyond it. No PII, auth, or secrets handling is specific to this feature.
+- **Existing Data or Systems**: Sessions already have an append-only `state/events` file. Its
+  comment events carry no version identity: an event has `doc`, `view`, `blockIndex`, `line`,
+  `quote`, `occurrence` and `timestamp`, but nothing ties it to a version of the doc. Viewers and
+  agents in use today read that event format and the `reload` WebSocket message.
 
 ## Constraints
 
@@ -75,16 +86,6 @@ SKILL.md asks users to gitignore. A server restart creates a new session dir.
   `wait-for-feedback.cjs` exit codes, approve semantics.
 - History is stored as plain files that the operator can choose to commit to git.
 - Tests run with `node --test tests/`, as the existing suite does.
-
-## Non-goals
-
-- A source (line-based) diff view. The operator finds it of little use; the diff is shown on the
-  rendered doc.
-- Editing docs or reverting to an earlier version from the browser.
-- Integrating with git (reading commits, branches, or `git diff`).
-- Diffing binary assets such as images.
-- Comment threading (replies to comments), or the operator manually resolving or closing comments.
-- Committing history automatically.
 
 ## Success criteria
 
@@ -144,3 +145,5 @@ SKILL.md asks users to gitignore. A server restart creates a new session dir.
 - 2026-10-30: Reopened per operator when choosing the Optimal design. Comments now carry forward
   across revisions with addressed/open status, so the non-goal was narrowed to threading and
   manual resolution. Added a criterion for switching from the diff to the full revised doc.
+- 2026-10-30: Applied roborev job 4516: added the User Story and the Existing Data or Systems driver.
+  The non-goals moved to design.md Out of scope, per the doc contract. No requirement changed.

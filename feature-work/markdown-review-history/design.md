@@ -89,13 +89,18 @@ or the server.
 
 1. **Take the lock.** Create `.revisions/<name>/lock` with the `wx` flag and write our pid. On
    `EEXIST`, read the pid in it:
-   - if that process is dead, remove the lock and retry;
-   - otherwise retry every 50ms, for up to 5s, then throw "revision lock held by pid N on
-     `<path>`".
+   - if that process is alive, retry every 50ms, for up to 5s, then throw "revision lock held by
+     pid N on `<path>`";
+   - if that process is dead, **do not take the lock over**. Throw "stale revision lock on
+     `<path>` from dead pid N — check no revise is running, delete `<lock path>`, and retry".
 
-   This is the same pattern as `wait-for-feedback`'s `watcher.pid`.
-2. **Clean up.** Delete any `*.tmp` left in the dir. A temp file can only come from a writer that
-   died, because we now hold the lock.
+   Two writers recovering the same stale lock could each delete the other's fresh lock. That is
+   the unhandled race that `wait-for-feedback.cjs` documents for its own pid file. Failing loudly
+   avoids it. A stale lock only appears after a revise process crashes, so the manual step is
+   rare.
+2. **Repair and clean up.** Truncate `index.jsonl` back to its last `\n`, if it doesn't end with
+   one. Delete any `*.tmp` left in the dir. Either can only come from a writer that died, because
+   we now hold the lock.
 3. **Read the doc.** If it is missing, throw "no such file: `<path>`".
 4. **Check for changes.** Hash the content (SHA-256). If the hash equals the latest index entry's,
    release the lock and return `{status: 'unchanged', revision: N}`.
@@ -106,8 +111,17 @@ or the server.
 
 Only the lock holder writes, so numbers can't collide. If a writer crashes after step 5, it leaves
 an unindexed `NNNN.rev`. The next writer reuses that number and its rename overwrites the file,
-because the index decides the numbering. `readIndex(docPath)` parses only complete lines, so the
-partial last line of an in-flight append is ignored. `recordedEvents()` already uses this rule.
+because the index decides the numbering. If a writer dies partway through an append, the next lock
+holder truncates the fragment (step 2), so later appends never join onto it. `readIndex(docPath)`
+parses only complete lines, so the partial last line of an in-flight or interrupted append is
+ignored. `recordedEvents()` already uses this rule.
+
+**What "never recorded mid-write" rests on.** `revise.cjs` reads the doc only when the agent runs
+it, and the agent runs it after its edits are finished. The server never reads the working file.
+So a revision is whatever the doc held at the moment the agent declared it ready. The protocol
+gives this guarantee; the atomic rename doesn't. The rename only makes sure a reader never sees a
+partly written revision file. The `viewer-shows-revisions` scenario "Editing the file without
+revising changes nothing the operator sees" proves the server side.
 
 ### Serving revisions (`server.cjs`)
 
@@ -156,9 +170,12 @@ because a plain `require` returns nothing under the repo's `"type": "module"` (v
 - **`pairChanges(ops)`** — within a run of `removed` items directly followed by a run of `added`
   items, pairs them one-for-one in order into `changed`, when both have the same kind (same token
   type, or same Gherkin block kind). Anything left over stays `removed` or `added`.
-- **Normalized raw** — `raw` with trailing whitespace trimmed on each line and `\r\n` turned into
-  `\n`.
-- **`diffMarkdown(tokensA, tokensB)`** — diffs the non-space top-level tokens by normalized raw,
+- **Block equality is by rendered output.** Two tokens are the same when `marked.parser([token])`
+  produces identical HTML. Each revision is parsed with its own `tokens.links`, the document's
+  reference-link definitions. This catches changes that leave a block's raw text alone, such as an
+  edited reference-link definition, which changes the resolved `href`. It also catches a trailing
+  double-space hard break. Raw text is never trimmed.
+- **`diffMarkdown(tokensA, tokensB)`** — diffs the non-space top-level tokens using that equality,
   then pairs. A `changed` pair descends by token type:
 
   | Token type | Descends to |
@@ -166,8 +183,12 @@ because a plain `require` returns nothing under the repo's `"type": "module"` (v
   | `list` | items via `diffSequence` on item raw, then a changed item's text to words |
   | `table` | the header cells by position, the rows via `diffSequence` on row text, then the cells of a changed row by position |
   | `code` | lines via `diffSequence`, then the words of a changed line |
-  | `paragraph`, `heading`, `blockquote` | words |
+  | `paragraph`, `heading` | words |
+  | `blockquote` | `diffMarkdown` on its `token.tokens`, which are block tokens such as paragraphs |
   | anything else | a whole-block `removed` plus `added` |
+
+  A changed reference-link definition shows up as the paragraph whose rendered link changed. The
+  definition itself renders nothing.
 
 - **`diffWords(inlineTokensA, inlineTokensB)`** — "words" are built from the block's inline tokens
   (`token.tokens` from the lexer). Plain `text` tokens split on whitespace. `strong`, `em`, `del`,
@@ -190,7 +211,8 @@ they exist), and its children or word runs. The tree also exposes `isIdentical`.
 |---|---|
 | `equal` block | Rendered as in the full view. |
 | `added` / `removed` block | Rendered as in the full view, in a wrapper with class `d-added` (green) or `d-removed` (red). Removed blocks are not commentable. |
-| `changed` paragraph / heading / blockquote | The block's markdown is rebuilt from its words, with removed words wrapped in `<del class="d-del">` and added words in `<ins class="d-add">`, then passed through `marked.parser`. |
+| `changed` blockquote | A `blockquote` element wrapping the rendered nested diff. |
+| `changed` paragraph / heading | The block's markdown is rebuilt from its words, with removed words wrapped in `<del class="d-del">` and added words in `<ins class="d-add">`, then passed through `marked.parser`. |
 | `changed` list | A list element is built. Each item is equal, added or removed (rendered with `marked.parseInline`, plus a class), or changed (rebuilt from its words as above). |
 | `changed` table | A table element is built from the tokens. A changed cell is rebuilt from its words with `marked.parseInline`. Added and removed rows get the row classes. |
 | `changed` code, Gherkin lines, plain-text lines | DOM is built directly, the way `renderSource`/`renderGherkin` do today, with `<span class="d-add">`/`<span class="d-del">` per word run. Nothing goes through `marked`, so nothing gets escaped. |
@@ -230,8 +252,10 @@ list, marked "anchor not found".
 
 - "open";
 - "addressed in revision k";
-- "addressed in revision k (text removed)". In diff view this card sits on the removed block. In
-  the full doc it sits after block `afterIndex`.
+- "addressed in revision k (text removed)". If the comparison on screen includes step `k` (base
+  < k ≤ target), the card sits on the removed block. Otherwise it sits after block `afterIndex`:
+  always in the full doc, and in a diff whose range doesn't include the removal. For example, text
+  removed in revision 2 isn't in a 2→3 diff at all.
 
 **Comments made in diff view.** They take `quote`, `occurrence` and `blockIndex` from the
 **target revision's unmarked block**, the anchor list of the target's full render, found through
@@ -369,6 +393,9 @@ and revise as a CLI.
 
 ## Risks
 
+- **A stale lock needs a manual delete.** After a revise process crashes, the next revise fails
+  with the lock path until someone deletes the lock. This is deliberate (see "Recording a
+  revision"). `SKILL.md` gives the agent the recovery step.
 - **Inline tag injection breaks markdown.** This is mitigated by:
   - atomic inline tokens (emphasis, code, links, images), so a tag never lands inside them;
   - the render check against the unmarked base and target text;
@@ -406,12 +433,15 @@ and revise as a CLI.
 
 ## Additional tests (beyond the scenarios)
 
-- **Concurrent revises.** Two `recordRevision` processes started together on a changed doc produce
-  revisions 1 and 2. Both files match their index hashes, and the index has no duplicate lines.
-- **Stale lock.** A lock held by a dead pid is taken over. A leftover `.tmp` is removed, and the
-  revise succeeds.
-- **No half-written revision.** A revision file only exists under its final name after its
-  content is complete. This covers the criterion "content captured mid-write is never recorded".
+- **Concurrent revises.** Several `recordRevision` processes start together on one changed doc.
+  Exactly one records the new revision. The others return `unchanged` with that same revision
+  number. The index has no duplicate revision numbers, and every file matches its index hash.
+- **Stale lock.** A lock held by a dead pid makes revise fail. The error names the lock path and
+  the pid. The index and revision files are unchanged.
+- **Interrupted index append.** With a partial last line in the index, the next revise truncates
+  it and appends a valid line. `readIndex` then returns every revision.
+- **Atomic revision file.** A revision file appears only under its final name, once its content is
+  complete. Leftover `.tmp` files are removed by the next lock holder.
 - **`DESIGN.md` covers the feature.** It has sections on revisions, history storage and the rich
   diff (checked in the same test file as the `skill-instructions` scenarios).
 
@@ -432,3 +462,14 @@ and revise as a CLI.
   records before adding to the manifest. Added a seam-per-scenario test map, an archive-proof
   coverage check, `.rev` file names, and the restart and deleted-text risks. Added tests for
   concurrency and `DESIGN.md`.
+- 2026-10-30: Applied roborev job 4516.
+  - A stale lock now fails loudly and is not taken over, which closes the concurrent-recovery
+    race.
+  - An interrupted index append is truncated by the next lock holder.
+  - Block equality is by rendered HTML with each revision's link definitions, and raw text is no
+    longer trimmed.
+  - The "never recorded mid-write" guarantee is tied to the revise protocol.
+  - The concurrency test expects one new revision.
+  - Defined comment placement when the removal falls outside the shown range.
+  - Blockquotes descend into their block tokens.
+  - The Out of scope section now holds the problem doc's former non-goals.
