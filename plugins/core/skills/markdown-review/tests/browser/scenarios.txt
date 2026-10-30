@@ -1,1 +1,10 @@
 smoke
+A changed word inside a paragraph is marked inline
+A new section is shown as added
+A removed paragraph is still shown, marked as removed
+One changed list item is marked without marking its siblings
+One changed table cell is marked without marking the rest of the table
+A Gherkin step change is marked inside its scenario
+A plain-text doc shows changed lines
+Identical revisions show no change marking
+A code fence change is marked per line

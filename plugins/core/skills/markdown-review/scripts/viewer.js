@@ -408,13 +408,21 @@
     if (textCache.has(revisionKey(doc))) shownRevisions.set(doc.path, revisionKey(doc));
     else shownRevisions.delete(doc.path);
     const view = currentViewFor(doc.path);
+    // Markdown and Gherkin source views show the revision itself, never a diff.
+    const isDiffable = !(view === 'source' && TOGGLEABLE_EXTENSIONS.includes(extensionOf(doc.path)));
+    const base = isDiffable ? await baseRevisionFor(doc) : null;
     let anchors;
-    if (view === 'source') anchors = renderSource(pane, source);
+    let comparison = null;
+    if (base) {
+      const shown = renderDiff(pane, id, view, base.source, source);
+      anchors = shown.anchors;
+      comparison = { from: base.revision, to: doc.revision, isIdentical: shown.isIdentical };
+    } else if (view === 'source') anchors = renderSource(pane, source);
     else if (view === 'gherkin') anchors = renderGherkin(pane, source);
     else anchors = renderRendered(pane, id, source);
     renderedAnchors = anchors;
     currentOrphans = attachCommentCards(doc.path, view, anchors);
-    renderHeader(doc, view);
+    renderHeader(doc, view, comparison);
     renderDocComments(doc, currentOrphans);
     pane.scrollTop = scrollTop;
   }
@@ -430,20 +438,30 @@
       wrapper.innerHTML = marked.parser([token]);
       pane.appendChild(wrapper);
     });
-    pane.querySelectorAll('img').forEach(img => {
+    rewriteImages(pane, id);
+    return Array.from(pane.children).map((el, i) => {
+      const payload = { view: 'rendered', blockIndex: i, quote: blockQuote(el) };
+      makeCommentable(el, payload);
+      return { el: el, index: i, quote: payload.quote, payload: payload };
+    });
+  }
+
+  function rewriteImages(container, id) {
+    container.querySelectorAll('img').forEach(img => {
       const src = img.getAttribute('src') || '';
       // leave absolute URLs (scheme:), root paths, and data: alone
       if (/^([a-z][a-z0-9+.-]*:|\/)/i.test(src)) return;
       img.src = '/asset/' + id + '/' + src.split('/').map(encodeURIComponent).join('/');
     });
-    return Array.from(pane.children).map((el, i) => {
-      const quote = blockQuote(el);
-      el.classList.add('block');
-      el.addEventListener('click', (e) => {
-        if (e.target.closest('a') || e.target.closest('.popover')) return;
-        openPopover(el, { view: 'rendered', blockIndex: i, quote: quote });
-      });
-      return { el: el, index: i, quote: quote };
+  }
+
+  // payload: the anchor fields a comment on el records (view, quote, and
+  // blockIndex or line).
+  function makeCommentable(el, payload) {
+    el.classList.add('block');
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('a') || e.target.closest('.popover')) return;
+      openPopover(el, payload);
     });
   }
 
@@ -463,12 +481,10 @@
       code.textContent = text;
       row.appendChild(number);
       row.appendChild(code);
-      row.addEventListener('click', (e) => {
-        if (e.target.closest('.popover')) return;
-        openPopover(row, { view: 'source', line: line, quote: quote });
-      });
+      const payload = { view: 'source', line: line, quote: quote };
+      makeCommentable(row, payload);
       table.appendChild(row);
-      return { el: row, index: line, quote: quote };
+      return { el: row, index: line, quote: quote, payload: payload };
     });
     pane.innerHTML = '';
     pane.appendChild(table);
@@ -479,19 +495,25 @@
     pane.innerHTML = '';
     return parseGherkinBlocks(source).map((block, i) => {
       const anchor = gherkinAnchor(block, i);
-      const el = document.createElement('div');
-      el.className = 'block gherkin-block';
-      el.dataset.kind = block.kind;
+      const el = gherkinBlockElement(block);
       appendGherkinLines(el, block.lines);
-      const header = el.querySelector('.gl-keyword');
-      if (header) header.classList.add('gl-header');
-      el.addEventListener('click', (e) => {
-        if (e.target.closest('.popover')) return;
-        openPopover(el, anchor);
-      });
+      markGherkinHeader(el);
+      makeCommentable(el, anchor);
       pane.appendChild(el);
-      return { el: el, index: i, quote: anchor.quote };
+      return { el: el, index: i, quote: anchor.quote, payload: anchor };
     });
+  }
+
+  function gherkinBlockElement(block) {
+    const el = document.createElement('div');
+    el.className = 'gherkin-block';
+    el.dataset.kind = block.kind;
+    return el;
+  }
+
+  function markGherkinHeader(el) {
+    const header = el.querySelector('.gl-keyword');
+    if (header) header.classList.add('gl-header');
   }
 
   function gherkinAnchor(block, blockIndex) {
@@ -557,7 +579,324 @@
     return table;
   }
 
-  function renderHeader(doc, view) {
+  // ===== diff view =====
+  //
+  // Renders the diff tree from revision-diff.cjs. Unchanged blocks look as they
+  // do in the full view; added ones are green, removed ones red, and changed
+  // ones mark their words inline. Every block a comment can attach to anchors
+  // to the target revision's own unmarked block, never to the diff's mixed text.
+
+  const MARKED_RENDER = {
+    blocks: tokens => marked.parser(tokens),
+    inline: tokens => marked.Parser.parseInline(tokens)
+  };
+  const revisionEntriesCache = new Map(); // revisionKey(latest doc) -> GET /revisions entries
+
+  // The revision a diff compares against: the one before the doc's latest.
+  // null when there is none or it can't be loaded (logged), so the full doc shows.
+  async function baseRevisionFor(doc) {
+    if (!doc.revision || doc.revision < 2) return null;
+    let entries;
+    try {
+      entries = await revisionEntries(doc);
+    } catch (e) {
+      console.error('revision list for ' + doc.path + ' failed to load: ' + e.message);
+      return null;
+    }
+    const entry = entries.find(e => e.revision === doc.revision - 1);
+    if (!entry) return null;
+    const baseDoc = { id: doc.id, path: doc.path, revision: entry.revision, sha256: entry.sha256 };
+    const source = await docText(baseDoc);
+    if (!textCache.has(revisionKey(baseDoc))) return null;
+    return { revision: entry.revision, source: source };
+  }
+
+  async function revisionEntries(doc) {
+    const key = revisionKey(doc);
+    if (!revisionEntriesCache.has(key)) revisionEntriesCache.set(key, await fetchJson('/revisions/' + doc.id));
+    return revisionEntriesCache.get(key);
+  }
+
+  // Returns {anchors, isIdentical}.
+  function renderDiff(pane, id, view, baseSource, targetSource) {
+    if (view === 'gherkin') return renderGherkinDiff(pane, baseSource, targetSource);
+    if (view === 'source') return renderLinesDiff(pane, baseSource, targetSource);
+    return renderMarkdownDiff(pane, id, baseSource, targetSource);
+  }
+
+  // The target revision's anchors, rendered off-screen.
+  function detachedAnchors(renderInto) {
+    return renderInto(document.createElement('div'));
+  }
+
+  function anchorDiffElement(el, targetAnchor, anchors) {
+    makeCommentable(el, targetAnchor.payload);
+    anchors.push({ el: el, index: targetAnchor.index, quote: targetAnchor.quote, payload: targetAnchor.payload });
+  }
+
+  function renderMarkdownDiff(pane, id, baseSource, targetSource) {
+    const blocksOf = source => marked.lexer(source).filter(token => token.type !== 'space');
+    const tree = diffMarkdown(blocksOf(baseSource), blocksOf(targetSource), MARKED_RENDER);
+    const targetAnchors = detachedAnchors(container => renderRendered(container, id, targetSource));
+    const anchors = [];
+    pane.innerHTML = '';
+    tree.nodes.forEach(node => {
+      markdownNodeElements(node).forEach(el => {
+        pane.appendChild(el);
+        if (el.dataset.side !== 'base') anchorDiffElement(el, targetAnchors[node.targetIndex], anchors);
+      });
+    });
+    rewriteImages(pane, id);
+    return { anchors: anchors, isIdentical: tree.isIdentical };
+  }
+
+  // One node can yield two elements (a changed block that falls back to a
+  // removal plus an addition); the removal is marked data-side="base".
+  function markdownNodeElements(node) {
+    if (node.op === 'equal') return [blockElement(node.target, null)];
+    if (node.op === 'added') return [blockElement(node.target, 'd-added')];
+    if (node.op === 'removed') return [blockElement(node.base, 'd-removed')];
+    const changed = changedBlockElement(node);
+    return changed ? [changed] : [blockElement(node.base, 'd-removed'), blockElement(node.target, 'd-added')];
+  }
+
+  // null when the change can't be shown in place: the caller falls back.
+  function changedBlockElement(node) {
+    if (node.words) return rebuiltBlockElement(node);
+    if (node.items) return wrap(listDiffElement(node));
+    if (node.rows) return wrap(tableDiffElement(node));
+    if (node.lines) return wrap(codeDiffElement(node));
+    if (node.children) return wrap(blockquoteDiffElement(node));
+    return null;
+  }
+
+  function wrap(child) {
+    const el = document.createElement('div');
+    el.appendChild(child);
+    return el;
+  }
+
+  function blockElement(token, diffClass) {
+    const el = document.createElement('div');
+    el.innerHTML = marked.parser([structuredClone(token)]);
+    if (diffClass) el.classList.add(diffClass);
+    if (diffClass === 'd-removed') el.dataset.side = 'base';
+    return el;
+  }
+
+  // A changed paragraph or heading rebuilt from its word runs, or null if the
+  // markers changed how it renders (checked against both unmarked revisions).
+  function rebuiltBlockElement(node) {
+    const prefix = node.kind === 'heading' ? '#'.repeat(node.target.depth) + ' ' : '';
+    const el = document.createElement('div');
+    el.innerHTML = marked.parse(prefix + wordsMarkdown(node.words));
+    return rendersLike(el, blockElement(node.base, null), blockElement(node.target, null)) ? el : null;
+  }
+
+  function wordsMarkdown(words) {
+    return words.map(run => {
+      if (run.op === 'added') return '<ins class="d-add">' + run.text + '</ins>';
+      if (run.op === 'removed') return '<del class="d-del">' + run.text + '</del>';
+      return run.text;
+    }).join('');
+  }
+
+  // Without its <del>s the marked element must read as the target; without
+  // its <ins>s, as the base. Otherwise a marker landed inside markdown syntax.
+  function rendersLike(markedEl, baseEl, targetEl) {
+    return textWithout(markedEl, 'del') === normalizedText(targetEl) &&
+      textWithout(markedEl, 'ins') === normalizedText(baseEl);
+  }
+
+  function textWithout(el, selector) {
+    const copy = el.cloneNode(true);
+    copy.querySelectorAll(selector).forEach(child => child.remove());
+    return normalizedText(copy);
+  }
+
+  function normalizedText(el) {
+    return el.textContent.replace(/\s+/g, ' ').trim();
+  }
+
+  function listDiffElement(node) {
+    const list = document.createElement(node.target.ordered ? 'ol' : 'ul');
+    if (node.target.ordered && node.target.start !== '' && node.target.start !== 1) list.start = node.target.start;
+    node.items.forEach(item => {
+      if (item.op === 'equal') list.appendChild(itemElement(node.target, item.target, null));
+      else if (item.op === 'added') list.appendChild(itemElement(node.target, item.target, 'd-added'));
+      else if (item.op === 'removed') list.appendChild(itemElement(node.base, item.base, 'd-removed'));
+      else changedItemElements(node, item).forEach(li => list.appendChild(li));
+    });
+    return list;
+  }
+
+  // An item rendered as marked renders it: as the only item of its list.
+  function itemElement(listToken, item, diffClass) {
+    const holder = document.createElement('div');
+    holder.innerHTML = marked.parser([Object.assign(structuredClone(listToken), { items: [structuredClone(item)] })]);
+    const li = holder.querySelector('li');
+    if (diffClass) li.classList.add(diffClass);
+    return li;
+  }
+
+  function changedItemElements(node, item) {
+    const baseLi = itemElement(node.base, item.base, null);
+    const targetLi = itemElement(node.target, item.target, null);
+    if (item.words) {
+      const li = document.createElement('li');
+      li.innerHTML = marked.parseInline(wordsMarkdown(item.words));
+      if (rendersLike(li, baseLi, targetLi)) return [li];
+    }
+    baseLi.classList.add('d-removed');
+    targetLi.classList.add('d-added');
+    return [baseLi, targetLi];
+  }
+
+  function tableDiffElement(node) {
+    const table = document.createElement('table');
+    const head = table.createTHead().insertRow();
+    node.header.forEach(cell => head.appendChild(cellElement('th', cell)));
+    const body = table.createTBody();
+    node.rows.forEach(row => {
+      const tr = body.insertRow();
+      if (row.op === 'changed') {
+        row.cells.forEach(cell => tr.appendChild(cellElement('td', cell)));
+        return;
+      }
+      const cells = row.op === 'removed' ? row.base : row.target;
+      if (row.op !== 'equal') tr.classList.add(row.op === 'added' ? 'd-added' : 'd-removed');
+      cells.forEach(cell => tr.appendChild(inlineCell('td', cell.tokens)));
+    });
+    return table;
+  }
+
+  function cellElement(tag, cell) {
+    if (cell.op === 'equal' || cell.op === 'added') return inlineCell(tag, cell.target.tokens);
+    if (cell.op === 'removed') return inlineCell(tag, cell.base.tokens);
+    const el = document.createElement(tag);
+    el.innerHTML = marked.parseInline(wordsMarkdown(cell.words));
+    if (rendersLike(el, inlineCell(tag, cell.base.tokens), inlineCell(tag, cell.target.tokens))) return el;
+    el.innerHTML = '<del class="d-del">' + MARKED_RENDER.inline(structuredClone(cell.base.tokens)) + '</del>' +
+      '<ins class="d-add">' + MARKED_RENDER.inline(structuredClone(cell.target.tokens)) + '</ins>';
+    return el;
+  }
+
+  function inlineCell(tag, tokens) {
+    const el = document.createElement(tag);
+    el.innerHTML = MARKED_RENDER.inline(structuredClone(tokens));
+    return el;
+  }
+
+  // Code is built as DOM: <ins>/<del> inside a fence would be escaped by marked.
+  function codeDiffElement(node) {
+    const pre = document.createElement('pre');
+    const code = document.createElement('code');
+    node.lines.forEach((line, i) => {
+      if (i > 0) code.appendChild(document.createTextNode('\n'));
+      code.appendChild(lineElement(line));
+    });
+    pre.appendChild(code);
+    return pre;
+  }
+
+  // One diff line as a span: whole-line class for added/removed, word runs
+  // for changed.
+  function lineElement(line) {
+    const span = document.createElement('span');
+    if (line.op === 'changed') {
+      line.words.forEach(run => span.appendChild(wordRunElement(run)));
+      return span;
+    }
+    span.textContent = line.op === 'removed' ? line.base : line.target;
+    if (line.op !== 'equal') span.className = line.op === 'added' ? 'd-added' : 'd-removed';
+    return span;
+  }
+
+  function wordRunElement(run) {
+    if (run.op === 'equal') return document.createTextNode(run.text);
+    const el = document.createElement(run.op === 'added' ? 'ins' : 'del');
+    el.className = run.op === 'added' ? 'd-add' : 'd-del';
+    el.textContent = run.text;
+    return el;
+  }
+
+  function blockquoteDiffElement(node) {
+    const quote = document.createElement('blockquote');
+    node.children.forEach(child => markdownNodeElements(child).forEach(el => quote.appendChild(el)));
+    return quote;
+  }
+
+  function renderGherkinDiff(pane, baseSource, targetSource) {
+    const tree = diffGherkin(parseGherkinBlocks(baseSource), parseGherkinBlocks(targetSource));
+    const targetAnchors = detachedAnchors(container => renderGherkin(container, targetSource));
+    const anchors = [];
+    pane.innerHTML = '';
+    tree.nodes.forEach(node => {
+      const el = gherkinNodeElement(node);
+      pane.appendChild(el);
+      if (node.op !== 'removed') anchorDiffElement(el, targetAnchors[node.targetIndex], anchors);
+    });
+    return { anchors: anchors, isIdentical: tree.isIdentical };
+  }
+
+  function gherkinNodeElement(node) {
+    const block = node.op === 'removed' ? node.base : node.target;
+    const el = gherkinBlockElement(block);
+    if (node.op === 'changed') {
+      node.lines.forEach(line => el.appendChild(gherkinDiffLine(node, line)));
+    } else {
+      appendGherkinLines(el, block.lines);
+      if (node.op !== 'equal') el.classList.add(node.op === 'added' ? 'd-added' : 'd-removed');
+    }
+    markGherkinHeader(el);
+    return el;
+  }
+
+  // Equal, added and removed lines keep their Gherkin styling; a changed line
+  // shows its word runs.
+  function gherkinDiffLine(node, line) {
+    if (line.op === 'changed') {
+      const el = document.createElement('div');
+      el.className = 'gl gl-' + node.target.lines[line.targetIndex].kind;
+      line.words.forEach(run => el.appendChild(wordRunElement(run)));
+      return el;
+    }
+    const source = line.op === 'removed' ? node.base.lines[line.baseIndex] : node.target.lines[line.targetIndex];
+    const el = gherkinLine(source);
+    if (line.op !== 'equal') el.classList.add(line.op === 'added' ? 'd-added' : 'd-removed');
+    return el;
+  }
+
+  // Plain-text docs: numbered lines, as in the source view.
+  function renderLinesDiff(pane, baseSource, targetSource) {
+    const lines = diffLines(baseSource, targetSource);
+    const targetAnchors = detachedAnchors(container => renderSource(container, targetSource));
+    const anchors = [];
+    const table = document.createElement('table');
+    table.className = 'source';
+    lines.forEach(line => {
+      const row = document.createElement('tr');
+      const number = document.createElement('td');
+      number.className = 'ln';
+      number.textContent = line.op === 'removed' ? '' : String(line.targetIndex + 1);
+      const code = document.createElement('td');
+      code.className = 'code';
+      code.appendChild(lineElement(line));
+      row.appendChild(number);
+      row.appendChild(code);
+      if (line.op === 'added' || line.op === 'removed') row.classList.add(line.op === 'added' ? 'd-added' : 'd-removed');
+      table.appendChild(row);
+      // Source anchors are 1-based line numbers.
+      if (line.op !== 'removed') anchorDiffElement(row, targetAnchors[line.targetIndex], anchors);
+    });
+    pane.innerHTML = '';
+    pane.appendChild(table);
+    return { anchors: anchors, isIdentical: lines.every(line => line.op === 'equal') };
+  }
+
+  // comparison: {from, to, isIdentical} when a diff is on screen, else null.
+  function renderHeader(doc, view, comparison) {
+    $('#diffinfo').textContent = comparisonText(comparison);
     const isApproved = approved.has(doc.path);
     $('#docheader').textContent = titleFor(doc) + (isApproved ? '  ✓ approved' : '');
     $('#docheader').title = doc.path;
@@ -568,6 +907,12 @@
     const toggle = $('#view-toggle');
     toggle.hidden = !TOGGLEABLE_EXTENSIONS.includes(extensionOf(doc.path));
     toggle.textContent = view === 'source' ? 'Rendered' : 'Source';
+  }
+
+  function comparisonText(comparison) {
+    if (!comparison) return '';
+    const range = 'revision ' + comparison.from + ' and revision ' + comparison.to;
+    return comparison.isIdentical ? 'No changes between ' + range : 'Changes between ' + range;
   }
 
   // ===== comments =====

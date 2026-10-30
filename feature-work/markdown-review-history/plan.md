@@ -313,7 +313,7 @@ steps 8–10 only add to it.
 
 ### 8. Diff rendering
 
-**Status:** ☐
+**Status:** ☑
 
 **What:** In `viewer.js` and `viewer.html`:
 
@@ -353,7 +353,7 @@ Extend `run.sh` with one browser check per `rich-diff` scenario, named after it.
 **Verify:**
 
 - `tests/browser/run.cjs` prints `ok <name>` for all 9 and `ok smoke`, and exits 0.
-- `T`: 108 pass, 0 fail.
+- `T`: 110 pass, 0 fail.
 
 ### 9. Revision navigation
 
@@ -389,7 +389,7 @@ file before the page loads.
 **Verify:**
 
 - `tests/browser/run.cjs` prints `ok` for those 7 plus every earlier check, and exits 0.
-- `T`: 108 pass, 0 fail.
+- `T`: 110 pass, 0 fail.
 
 ### 10. Revision-aware feedback and carried-forward comments
 
@@ -429,7 +429,7 @@ Extend `run.sh`:
 **Verify:**
 
 - `tests/browser/run.cjs` prints `ok` for those 9 plus every earlier check, and exits 0.
-- `T`: 108 pass, 0 fail.
+- `T`: 110 pass, 0 fail.
 
 ### 11. Skill docs, version bump, traceability
 
@@ -473,7 +473,7 @@ it makes scenario traceability a test.
 
 - `S` with the 3 scenario names, the `DESIGN.md` check and `every scenario has a test`: all show
   `✔`.
-- `T`: 113 pass, 0 fail.
+- `T`: 115 pass, 0 fail.
 - `M` exits 0.
 
 ### 12. End-to-end dogfood
@@ -600,3 +600,6 @@ All 38 scenarios are covered, with no gaps.
 - 2026-10-30: The browser runner is `tests/browser/run.cjs` (Node), not `run.sh`. The operator's rule
   is that shell scripts over 20 lines become a real language, and the skill is all Node. It is run as
   `node tests/browser/run.cjs [--only <name>]`.
+- 2026-10-30: Step 8 done. Totals from step 8 on +2 for the pairing tests. The "No changes" check
+  uses a trailing blank line: the bytes change, so revise records it, but the rendered doc doesn't.
+  Identical content can't produce two adjacent revisions, because revise dedupes it.
