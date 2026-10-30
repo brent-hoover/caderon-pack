@@ -433,3 +433,27 @@ test('/doc/<id>/rev/<n> returns that revision and 404s a bad number', async () =
   assert.strictEqual((await get('/doc/' + id + '/rev/x')).status, 404);
 });
 
+
+test('recreated history after a deletion is announced', async () => {
+  const { doc, id } = await servedDoc('recreated.md', FIRST_DRAFT);
+  fs.writeFileSync(doc, SECOND_DRAFT);
+  assert.strictEqual(runScript('revise.cjs', ['--session-dir', sessionDir, doc]).status, 0);
+  await sleep(1500);
+  fs.rmSync(path.join(docsDir, '.revisions', 'recreated.md'), { recursive: true });
+  await sleep(1500);
+  const browser = listen();
+  await browser.opened;
+
+  assert.strictEqual(runScript('revise.cjs', ['--session-dir', sessionDir, doc]).status, 0);
+
+  const notice = await waitForMessage(browser.messages, m => m.type === 'revision' && m.id === id, NOTICE_TIMEOUT_MS);
+  browser.close();
+  assert.deepStrictEqual(notice, { type: 'revision', id, revision: 1 });
+});
+
+test('a revision file missing from the index is not served', async () => {
+  const { id } = await servedDoc('unindexed.md', FIRST_DRAFT);
+  fs.writeFileSync(path.join(docsDir, '.revisions', 'unindexed.md', '0002.rev'), 'crashed before indexing\n');
+
+  assert.strictEqual((await get('/doc/' + id + '/rev/2')).status, 404);
+});

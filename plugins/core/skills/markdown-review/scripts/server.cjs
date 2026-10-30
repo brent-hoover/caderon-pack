@@ -219,7 +219,13 @@ function syncDocWatchers() {
 // repaired partial line changes the file without adding a revision.
 function announceNewRevision(docPath) {
   const revision = latestRevisionOf(docPath);
-  if (revision === null || revision <= (latestRevisions.get(docPath) || 0)) return;
+  if (revision === null) {
+    // History is gone: stay silent, but let recreated history (which starts
+    // again at revision 1) be announced.
+    latestRevisions.set(docPath, null);
+    return;
+  }
+  if (revision <= (latestRevisions.get(docPath) || 0)) return;
   latestRevisions.set(docPath, revision);
   touchActivity();
   const id = manifest.indexOf(docPath);
@@ -268,10 +274,13 @@ function notFound(res, message) {
   res.end(message || 'Not found');
 }
 
+// The index is authoritative: a revision file without its index line was left
+// by a revise that crashed before finishing, and is not a revision.
 function serveRevision(res, docPath, revision) {
   if (!docPath || revision < 1) { notFound(res); return; }
   let body;
   try {
+    if (!readIndex(docPath).some(entry => entry.revision === revision)) { notFound(res); return; }
     body = readRevision(docPath, revision);
   } catch (e) {
     // A missing revision is an ordinary 404; anything else (a symlink, an

@@ -23,7 +23,7 @@
   let currentOrphans = [];        // comment events of the current doc/view whose text is gone
   let renderedAnchors = [];       // [{el, index, quote}] of the doc on screen
   const viewChoice = new Map();   // path -> view the operator toggled to (in-memory; resets on reload)
-  const approved = new Map();     // path -> mtime at approval time
+  const approved = new Map();     // path -> revision approved
   const updated = new Set();      // paths changed since last viewed
   let popover = null;
 
@@ -191,7 +191,7 @@
     if (!doc) return;
     textCache.delete(doc.path);
     await docText(doc);
-    if (approved.has(doc.path) && doc.mtime > approved.get(doc.path)) approved.delete(doc.path);
+    if (approved.has(doc.path) && doc.revision !== approved.get(doc.path)) approved.delete(doc.path);
     remapCurrentId();
     if (id === currentId) await renderDoc(id, { preserveScroll: true });
     else updated.add(doc.path);
@@ -755,7 +755,7 @@
     markDocSent(doc.path);
     renderSubmitButton();
     showAllCardsSent();
-    approved.set(doc.path, doc.mtime);
+    approved.set(doc.path, doc.revision);
     renderSidebar();
     renderHeader(doc, currentViewFor(doc.path));
     flash('Approved');
