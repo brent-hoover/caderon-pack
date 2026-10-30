@@ -1,0 +1,147 @@
+// Scenarios: feature-work/markdown-review-history/scenarios/rich-diff.feature
+// (diff-tree seam). Each scenario test is named exactly after its scenario.
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const SCRIPTS = path.join(__dirname, '..', 'scripts');
+const { diffMarkdown } = require(path.join(SCRIPTS, 'revision-diff.cjs'));
+
+// A plain require() of marked.min.js returns nothing under the repo's
+// "type": "module", so it runs in a context the way the browser runs it.
+const marked = (() => {
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(SCRIPTS, 'marked.min.js'), 'utf-8'), context);
+  return context.marked;
+})();
+
+const render = {
+  blocks: (tokens) => marked.parser(tokens),
+  inline: (tokens) => marked.Parser.parseInline(tokens)
+};
+
+function blocksOf(source) {
+  return marked.lexer(source).filter(token => token.type !== 'space');
+}
+
+function diff(baseSource, targetSource) {
+  return diffMarkdown(blocksOf(baseSource), blocksOf(targetSource), render);
+}
+
+function changedRuns(words) {
+  return words.filter(run => run.op !== 'equal').map(run => ({ op: run.op, text: run.text }));
+}
+
+test('A changed word inside a paragraph is marked inline', () => {
+  const tree = diff('The cache expires after 30 seconds.\n', 'The cache expires after 60 seconds.\n');
+
+  assert.strictEqual(tree.nodes.length, 1);
+  assert.strictEqual(tree.nodes[0].op, 'changed');
+  assert.deepStrictEqual(changedRuns(tree.nodes[0].words),
+    [{ op: 'removed', text: '30' }, { op: 'added', text: '60' }]);
+});
+
+test('A new section is shown as added', () => {
+  const base = '# Plan\n\nIntro.\n\n## Scope\n\nThings.\n';
+  const target = base + '\n## Risks\n\nPolling may miss writes.\n';
+
+  const tree = diff(base, target);
+
+  assert.deepStrictEqual(tree.nodes.map(n => n.op), ['equal', 'equal', 'equal', 'equal', 'added', 'added']);
+  assert.deepStrictEqual(tree.nodes.slice(4).map(n => n.targetIndex), [4, 5]);
+});
+
+test('A removed paragraph is still shown, marked as removed', () => {
+  const tree = diff('# Modes\n\nLegacy mode is supported.\n\nNew mode is default.\n',
+    '# Modes\n\nNew mode is default.\n');
+
+  assert.deepStrictEqual(tree.nodes.map(n => n.op), ['equal', 'removed', 'equal']);
+  assert.strictEqual(tree.nodes[1].baseIndex, 1);
+  assert.match(tree.nodes[1].base.raw, /Legacy mode is supported\./);
+});
+
+test('One changed list item is marked without marking its siblings', () => {
+  const tree = diff('- alpha\n- beta\n- gamma\n', '- alpha\n- beta two\n- gamma\n');
+
+  const list = tree.nodes[0];
+  assert.strictEqual(list.op, 'changed');
+  assert.deepStrictEqual(list.items.map(item => item.op), ['equal', 'changed', 'equal']);
+  assert.deepStrictEqual(changedRuns(list.items[1].words), [{ op: 'added', text: ' two' }]);
+});
+
+test('One changed table cell is marked without marking the rest of the table', () => {
+  const header = '| setting | value |\n|---|---|\n';
+  const tree = diff(header + '| timeout | 30 |\n| retries | 3 |\n', header + '| timeout | 30 |\n| retries | 5 |\n');
+
+  const table = tree.nodes[0];
+  assert.strictEqual(table.op, 'changed');
+  assert.deepStrictEqual(table.header.map(cell => cell.op), ['equal', 'equal']);
+  assert.deepStrictEqual(table.rows.map(row => row.op), ['equal', 'changed']);
+  assert.deepStrictEqual(table.rows[1].cells.map(cell => cell.op), ['equal', 'changed']);
+  assert.deepStrictEqual(changedRuns(table.rows[1].cells[1].words),
+    [{ op: 'removed', text: '3' }, { op: 'added', text: '5' }]);
+});
+
+test('Identical revisions show no change marking', () => {
+  const source = '# Plan\n\n- a\n- b\n\n| k | v |\n|---|---|\n| x | 1 |\n';
+
+  const tree = diff(source, source);
+
+  assert.strictEqual(tree.isIdentical, true);
+  assert.ok(tree.nodes.every(n => n.op === 'equal'));
+});
+
+test('A code fence change is marked per line', () => {
+  const tree = diff('```\na = 1\nb = 2\n```\n', '```\na = 1\nb = 3\n```\n');
+
+  const code = tree.nodes[0];
+  assert.strictEqual(code.op, 'changed');
+  assert.deepStrictEqual(code.lines.map(line => line.op), ['equal', 'changed']);
+  assert.deepStrictEqual(changedRuns(code.lines[1].words),
+    [{ op: 'removed', text: '2' }, { op: 'added', text: '3' }]);
+});
+
+test('emphasis is diffed as one word', () => {
+  const tree = diff('Expires after **30 seconds** always.\n', 'Expires after **60 seconds** always.\n');
+
+  assert.deepStrictEqual(changedRuns(tree.nodes[0].words),
+    [{ op: 'removed', text: '**30 seconds**' }, { op: 'added', text: '**60 seconds**' }]);
+});
+
+test('a link is diffed as one word', () => {
+  const tree = diff('Read [the old guide](https://a.example) first.\n', 'Read [the new guide](https://a.example) first.\n');
+
+  assert.deepStrictEqual(changedRuns(tree.nodes[0].words), [
+    { op: 'removed', text: '[the old guide](https://a.example)' },
+    { op: 'added', text: '[the new guide](https://a.example)' }
+  ]);
+});
+
+test('an inserted table row does not mark later rows', () => {
+  const header = '| k | v |\n|---|---|\n';
+  const tree = diff(header + '| a | 1 |\n| c | 3 |\n', header + '| a | 1 |\n| b | 2 |\n| c | 3 |\n');
+
+  assert.deepStrictEqual(tree.nodes[0].rows.map(row => row.op), ['equal', 'added', 'equal']);
+});
+
+test('a changed reference-link definition marks the paragraph', () => {
+  const tree = diff('See [docs][d].\n\n[d]: https://old.example\n', 'See [docs][d].\n\n[d]: https://new.example\n');
+
+  assert.strictEqual(tree.isIdentical, false);
+  assert.strictEqual(tree.nodes[0].op, 'changed');
+  assert.deepStrictEqual(changedRuns(tree.nodes[0].words),
+    [{ op: 'removed', text: '[docs][d]' }, { op: 'added', text: '[docs][d]' }]);
+});
+
+test('a blockquote edit is diffed inside the quote', () => {
+  const tree = diff('> First point.\n>\n> Second point.\n', '> First point.\n>\n> Second point, revised.\n');
+
+  const quote = tree.nodes[0];
+  assert.strictEqual(quote.op, 'changed');
+  assert.deepStrictEqual(quote.children.map(n => n.op), ['equal', 'changed']);
+  assert.deepStrictEqual(changedRuns(quote.children[1].words),
+    [{ op: 'removed', text: 'point.' }, { op: 'added', text: 'point, revised.' }]);
+});
