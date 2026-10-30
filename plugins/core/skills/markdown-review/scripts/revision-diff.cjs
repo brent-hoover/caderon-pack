@@ -94,6 +94,24 @@ function diffTable(base, target, render) {
   return { header: cellsByPosition(base.header, target.header), rows };
 }
 
+// Gherkin blocks (from parseGherkinBlocks) match by kind + title. A matched
+// block whose lines differ is 'changed'; a scenario renamed in place shows up
+// as a removal plus an addition of the same kind, which pairChanges turns into
+// 'changed' too, so comments on it read as addressed rather than removed.
+function diffGherkin(baseBlocks, targetBlocks) {
+  const keyOf = block => block.kind + ':' + block.title;
+  const textOf = block => block.lines.map(line => line.text).join('\n');
+  const ops = pairChanges(diffSequence(baseBlocks, targetBlocks, (a, b) => keyOf(a) === keyOf(b)), block => block.kind);
+  const nodes = ops.map(op => {
+    const node = { op: op.op, kind: (op.a || op.b).kind, base: op.a, target: op.b,
+      baseIndex: op.aIndex, targetIndex: op.bIndex };
+    const isEdited = op.op === 'changed' || (op.op === 'equal' && textOf(op.a) !== textOf(op.b));
+    if (!isEdited) return node;
+    return Object.assign(node, { op: 'changed', lines: diffLines(textOf(op.a), textOf(op.b)) });
+  });
+  return { nodes, isIdentical: nodes.every(node => node.op === 'equal') };
+}
+
 // Line diff, then word runs inside each changed line. Used for code fences,
 // plain-text docs, and mapping Source-view comments.
 function diffLines(baseText, targetText) {
@@ -220,5 +238,5 @@ function clone(value) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { diffMarkdown, diffLines, diffSequence, pairChanges, diffWords };
+  module.exports = { diffMarkdown, diffGherkin, diffLines, diffSequence, pairChanges, diffWords };
 }

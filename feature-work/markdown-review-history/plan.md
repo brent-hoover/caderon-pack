@@ -217,7 +217,7 @@ Extra unit tests:
 
 ### 5. Diff for Gherkin and plain text
 
-**Status:** ☐
+**Status:** ☑
 
 **What:**
 

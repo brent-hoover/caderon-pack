@@ -7,7 +7,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const SCRIPTS = path.join(__dirname, '..', 'scripts');
-const { diffMarkdown } = require(path.join(SCRIPTS, 'revision-diff.cjs'));
+const { diffMarkdown, diffGherkin, diffLines } = require(path.join(SCRIPTS, 'revision-diff.cjs'));
+const { parseGherkinBlocks } = require(path.join(SCRIPTS, 'gherkin.cjs'));
 
 // A plain require() of marked.min.js returns nothing under the repo's
 // "type": "module", so it runs in a context the way the browser runs it.
@@ -145,3 +146,36 @@ test('a blockquote edit is diffed inside the quote', () => {
   assert.deepStrictEqual(changedRuns(quote.children[1].words),
     [{ op: 'removed', text: 'point.' }, { op: 'added', text: 'point, revised.' }]);
 });
+
+const LOGIN_FEATURE = 'Feature: Login\n\n' +
+  '  Scenario: Good password\n    Given a user\n    Then the user sees the dashboard\n\n' +
+  '  Scenario: Bad password\n    Then an error shows\n';
+
+function gherkinDiff(baseSource, targetSource) {
+  return diffGherkin(parseGherkinBlocks(baseSource), parseGherkinBlocks(targetSource));
+}
+
+test('A Gherkin step change is marked inside its scenario', () => {
+  const tree = gherkinDiff(LOGIN_FEATURE, LOGIN_FEATURE.replace('the dashboard', 'the welcome page'));
+
+  assert.deepStrictEqual(tree.nodes.map(n => n.op), ['equal', 'changed', 'equal']);
+  const changedLines = tree.nodes[1].lines.filter(line => line.op === 'changed');
+  assert.strictEqual(changedLines.length, 1);
+  assert.deepStrictEqual(changedRuns(changedLines[0].words),
+    [{ op: 'removed', text: 'dashboard' }, { op: 'added', text: 'welcome page' }]);
+});
+
+test('A plain-text doc shows changed lines', () => {
+  const lines = diffLines('host = local\nport = 8080\n', 'host = local\nport = 9090\n');
+
+  assert.deepStrictEqual(lines.map(line => line.op), ['equal', 'changed', 'equal']);
+  assert.deepStrictEqual(changedRuns(lines[1].words),
+    [{ op: 'removed', text: '8080' }, { op: 'added', text: '9090' }]);
+});
+
+test('a renamed scenario pairs as changed', () => {
+  const tree = gherkinDiff(LOGIN_FEATURE, LOGIN_FEATURE.replace('Scenario: Bad password', 'Scenario: Wrong password'));
+
+  assert.deepStrictEqual(tree.nodes.map(n => n.op), ['equal', 'equal', 'changed']);
+});
+
