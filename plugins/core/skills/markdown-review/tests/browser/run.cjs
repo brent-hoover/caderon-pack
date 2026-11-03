@@ -17,6 +17,7 @@ const BROWSER_SESSION = 'mdreview-browser-tests';
 const WAIT_TIMEOUT_MS = 5000;
 // What a timed-out wait reports, to tell a slow page from a wrong one.
 const PAGE_STATE = '({ status: document.querySelector(".status").textContent, ' +
+  'sidebar: document.querySelector("#doclist").innerHTML.slice(0, 300), ' +
   'header: document.querySelector("#docheader").textContent, ' +
   'revinfo: document.querySelector("#revinfo").textContent, ' +
   'doc: document.querySelector("#doc").textContent.slice(0, 120) })';
@@ -37,6 +38,8 @@ const CHECKS = [
   { name: 'Identical revisions show no change marking', run: checkIdenticalRevisions },
   { name: 'A code fence change is marked per line', run: checkCodeLineChange },
   { name: 'a nested list item edit marks only its words', run: checkNestedListItemChange },
+  { name: 'a loose list item keeps its paragraphs apart', run: checkLooseListItem },
+  { name: 'a nested item keeps its reference link', run: checkNestedItemReferenceLink },
   { name: 'a removed table column is marked', run: checkRemovedTableColumn },
   { name: 'a task item keeps its checkbox when its text changes', run: checkTaskCheckboxKept },
   { name: 'a heading level change is marked', run: checkHeadingLevelChange },
@@ -53,6 +56,8 @@ const CHECKS = [
   { name: 'a comment drafted while another doc loads stays on its own doc', run: checkCommentDuringSwitch },
   { name: 'A comment on changed text is shown as addressed', run: checkCommentAddressed },
   { name: 'Clicking an addressed badge shows the change that addressed the comment', run: checkAddressedBadgeLink },
+  { name: 'a source-view addressed badge is not a link', run: checkSourceViewBadge },
+  { name: 'an addressed badge clicked while another doc loads changes nothing', run: checkBadgeDuringSwitch },
   { name: 'A comment on unchanged text is shown as still open', run: checkCommentOpen },
   { name: 'A comment on removed text is shown as addressed by removal', run: checkCommentRemoved },
   { name: 'A comment from an older viewer without a revision is treated as revision 1', run: checkCommentWithoutRevision },
@@ -222,6 +227,20 @@ function checkNestedListItemChange() {
       expectDeep(evaluate(TEXTS_OF('#doc ins.d-add')), ['shrinks.'], 'added words');
       expectEqual(evaluate('document.querySelectorAll("#doc .d-added, #doc .d-removed").length'), 0, 'whole-block marks');
       expectEqual(evaluate('document.querySelectorAll("#doc li").length'), 3, 'list items');
+    });
+}
+
+function checkLooseListItem() {
+  withDiff('doc.md', '- First para.\n\n  Second para.\n- Next.\n', '- First para, edited.\n\n  Second para.\n- Next.\n', () => {
+    expectEqual(evaluate('document.querySelectorAll("#doc li:first-child p").length'), 2, 'paragraphs in the item');
+  });
+}
+
+function checkNestedItemReferenceLink() {
+  withDiff('doc.md', '- See [docs][d] now.\n  - child\n\n[d]: https://a.example\n',
+    '- See [docs][d] today.\n  - child\n\n[d]: https://a.example\n', () => {
+      expectEqual(evaluate('document.querySelectorAll("#doc li a[href^=\'https://a.example\']").length') >= 1, true, 'link rendered');
+      expectEqual(evaluate('document.querySelector("#doc").textContent.includes("[docs]")'), false, 'no literal reference');
     });
 }
 
@@ -473,12 +492,55 @@ function checkAddressedBadgeLink() {
     review.open();
     review.waitFor('document.querySelector("#revinfo").textContent === "Revision 2 of 2"');
     expectEqual(evaluate(DIFF_INFO), '', 'opens on the full document');
+    expectEqual(evaluate('document.querySelector(".status-badge.addressed").classList.contains("link")'), true, 'badge is a link');
     evaluate('document.querySelector("#doc").scrollTop = 0 || true');
     evaluate('document.querySelector(".status-badge.addressed").click() || true');
     review.waitFor(DIFF_INFO + ' === "Changes between revision 1 and revision 2"');
     review.waitFor('(() => { const card = Array.from(document.querySelectorAll("#doc .comment-card"))' +
       '.find(c => c.textContent.includes("too short")); if (!card) return false; const box = card.getBoundingClientRect();' +
       ' const pane = document.querySelector("#doc").getBoundingClientRect(); return box.top >= pane.top && box.bottom <= pane.bottom; })()');
+  } finally {
+    review.stop();
+  }
+}
+
+function checkSourceViewBadge() {
+  withCarriedComment(CACHE_REVISION_1.replace('30 seconds', '60 seconds'),
+    { view: 'source', line: 3, blockIndex: undefined }, review => {
+      browser(['click', '#view-toggle']);
+      review.waitFor('document.querySelectorAll("#doc table.source").length === 1');
+      review.waitFor('document.querySelectorAll(".status-badge.addressed").length === 1');
+      expectEqual(evaluate('document.querySelector(".status-badge.addressed").classList.contains("link")'), false, 'badge is a link');
+    });
+}
+
+function checkBadgeDuringSwitch() {
+  const review = startReview({ 'other.md': '# Other\n\nOther body.\n', 'cache.md': CACHE_REVISION_1 });
+  try {
+    const doc = review.docPath('cache.md');
+    review.appendEvent({ type: 'comment', doc: doc, view: 'rendered', revision: 1, blockIndex: 1,
+      quote: COMMENTED, selection: null, comment: 'too short', timestamp: Date.now() });
+    review.appendEvent({ type: 'submit', doc: doc, timestamp: Date.now() });
+    review.edit('cache.md', CACHE_REVISION_1.replace('30 seconds', '60 seconds'));
+    review.revise('cache.md');
+    review.open();
+    review.waitFor('document.querySelectorAll(".status-badge.addressed").length === 1');
+    // Two more revisions of the never-viewed other doc: it should open on
+    // revision 3 in full, not on the badge's 1→2 range.
+    review.edit('other.md', '# Other\n\nOther body, revised.\n');
+    review.revise('other.md');
+    review.edit('other.md', '# Other\n\nOther body, revised again.\n');
+    review.revise('other.md');
+    review.waitFor('document.querySelectorAll("#doclist .dot").length === 1');
+    evaluate(HOLD_REVISION_LOADS);
+    browser(['click', '#doclist li:nth-child(1)']);
+    review.waitFor('window.__held.length > 0');
+    evaluate('document.querySelector(".status-badge.addressed").click() || true');
+    pause(SETTLE_MS);
+    evaluate(RELEASE_REVISION_LOADS);
+    review.waitFor('document.querySelector("#docheader").textContent.startsWith("Other")');
+    review.waitFor('document.querySelector("#revinfo").textContent === "Revision 3 of 3"');
+    expectEqual(evaluate(DIFF_INFO), '', 'other doc opens in full');
   } finally {
     review.stop();
   }

@@ -10,6 +10,8 @@ A plain-text doc shows changed lines
 Identical revisions show no change marking
 A code fence change is marked per line
 a nested list item edit marks only its words
+a loose list item keeps its paragraphs apart
+a nested item keeps its reference link
 a removed table column is marked
 a task item keeps its checkbox when its text changes
 a heading level change is marked
@@ -26,6 +28,8 @@ Approve is refused while a newer revision is loading
 a comment drafted while another doc loads stays on its own doc
 A comment on changed text is shown as addressed
 Clicking an addressed badge shows the change that addressed the comment
+a source-view addressed badge is not a link
+an addressed badge clicked while another doc loads changes nothing
 A comment on unchanged text is shown as still open
 A comment on removed text is shown as addressed by removal
 A comment from an older viewer without a revision is treated as revision 1

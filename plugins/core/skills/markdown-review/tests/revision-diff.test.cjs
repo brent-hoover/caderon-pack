@@ -207,6 +207,15 @@ test('an edit inside a nested list marks only the changed words', () => {
   assert.deepStrictEqual(changedRuns(inner[0].words), [{ op: 'removed', text: 'grows.' }, { op: 'added', text: 'shrinks.' }]);
 });
 
+test('an html container inside a list item stays one block', () => {
+  const tree = diff('- Item\n\n  <details><summary>More</summary>\n\n  hidden\n\n  </details>\n',
+    '- Item, revised\n\n  <details><summary>More</summary>\n\n  hidden\n\n  </details>\n');
+
+  const children = tree.nodes[0].items[0].children;
+  assert.deepStrictEqual(children.map(n => n.kind), ['text', 'html']);
+  assert.strictEqual(children[1].op, 'equal');
+});
+
 const LOGIN_FEATURE = 'Feature: Login\n\n' +
   '  Scenario: Good password\n    Given a user\n    Then the user sees the dashboard\n\n' +
   '  Scenario: Bad password\n    Then an error shows\n';

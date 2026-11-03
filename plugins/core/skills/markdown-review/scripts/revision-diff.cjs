@@ -125,7 +125,8 @@ function diffListItems(baseItems, targetItems, render) {
     }
     // An item holding several blocks (its text line plus a nested list, say)
     // diffs those blocks, so an edit deep inside marks only what changed.
-    return Object.assign(node, { children: diffBlocks(withoutSpace(op.a.tokens), withoutSpace(op.b.tokens), render) });
+    const blocksOf = item => groupHtmlContainers(withoutSpace(item.tokens), render);
+    return Object.assign(node, { children: diffBlocks(blocksOf(op.a), blocksOf(op.b), render) });
   });
 }
 

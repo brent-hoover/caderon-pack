@@ -346,6 +346,10 @@
       cardsByEl.get(el).push({ saved: saved, status: status });
     };
     const elAt = index => (anchors.find(anchor => anchor.index === index) || {}).el;
+    // Markdown and Gherkin source views never show a diff, so a badge there
+    // can't link to one.
+    const canShowDiff = !(view === 'source' && TOGGLEABLE_EXTENSIONS.includes(extensionOf(docPath)));
+    const addressed = revision => (canShowDiff ? revision : undefined);
     commentsIn(docPath, view).forEach(saved => {
       const revision = commentRevision(saved.event);
       if (revision > placement.target) {
@@ -365,9 +369,9 @@
       } else if (outcome.state === 'open') {
         attach(elAt(outcome.index), saved, { label: 'open' });
       } else if (outcome.state === 'addressed') {
-        attach(elAt(outcome.index), saved, { label: 'addressed in revision ' + outcome.revision, addressedIn: outcome.revision });
+        attach(elAt(outcome.index), saved, { label: 'addressed in revision ' + outcome.revision, addressedIn: addressed(outcome.revision) });
       } else {
-        const status = { label: 'addressed in revision ' + outcome.revision + ' (text removed)', addressedIn: outcome.revision };
+        const status = { label: 'addressed in revision ' + outcome.revision + ' (text removed)', addressedIn: addressed(outcome.revision) };
         const el = removedBlockFor(saved.event, placement) || elAt(outcome.afterIndex);
         if (el) attach(el, saved, status);
         else docLevel.push({ event: saved.event, note: 'Commented text was removed: “' + saved.event.quote + '”', status: status });
@@ -430,11 +434,10 @@
   function statusBadge(saved, status) {
     const badge = document.createElement('span');
     badge.textContent = status.label;
-    if (status.addressedIn === undefined) {
-      badge.className = 'status-badge open';
-      return badge;
-    }
-    badge.className = 'status-badge addressed';
+    const isAddressed = status.label !== 'open';
+    badge.className = 'status-badge ' + (isAddressed ? 'addressed' : 'open');
+    if (status.addressedIn === undefined) return badge;
+    badge.classList.add('link');
     badge.title = 'Show the change in revision ' + status.addressedIn + ' that addressed this';
     badge.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -446,9 +449,14 @@
   // A revision number says nothing on its own: show the diff that made it,
   // where this comment's card sits on the block as that revision changed it.
   async function showAddressingChange(revision, event) {
-    comparisons.set(currentPath, { base: revision - 1, target: revision, lastBase: revision - 1 });
+    // The card's doc, not the selection: if another doc has been selected and
+    // is still loading, this card is leaving the screen — do nothing.
+    if (event.doc !== currentPath) return;
+    comparisons.set(event.doc, { base: revision - 1, target: revision, lastBase: revision - 1 });
     await renderDoc(currentId, { preserveScroll: false });
-    const card = document.querySelector('#doc .comment-card[data-comment-timestamp="' + event.timestamp + '"]');
+    const selector = '.comment-card[data-comment-timestamp="' + event.timestamp + '"]';
+    // A removed comment with no surviving block before it sits at doc level.
+    const card = document.querySelector('#doc ' + selector + ', #doc-comments ' + selector);
     if (card) card.scrollIntoView({ block: 'center' });
   }
 
@@ -1029,23 +1037,31 @@
   function nestedItemElement(item) {
     const li = document.createElement('li');
     li.insertAdjacentHTML('beforeend', taskCheckbox(item.target));
+    // A loose item's text blocks are paragraphs; a tight item's are inline.
+    const textTag = item.target.loose ? 'p' : 'span';
     item.children.forEach(child => {
-      if (child.kind === 'text') li.appendChild(itemTextElement(child));
+      if (child.kind === 'text') li.appendChild(itemTextElement(child, textTag));
       else markdownNodeElements(child).forEach(el => li.appendChild(el));
     });
     return li;
   }
 
-  function itemTextElement(node) {
-    const span = document.createElement('span');
+  // Rebuilt from word runs and checked like a paragraph: reparsing loses the
+  // doc's reference definitions, so a marked-up link that no longer renders
+  // as the original falls back to the old and new text side by side.
+  function itemTextElement(node, tag) {
+    const el = document.createElement(tag);
     if (node.op === 'changed' && node.words) {
-      span.innerHTML = marked.parseInline(wordsMarkdown(node.words));
-      return span;
+      el.innerHTML = marked.parseInline(wordsMarkdown(node.words));
+      if (rendersLike(el, inlineCell(tag, node.base.tokens, null), inlineCell(tag, node.target.tokens, null))) return el;
+      el.innerHTML = '<del class="d-del">' + MARKED_RENDER.inline(structuredClone(node.base.tokens)) + '</del> ' +
+        '<ins class="d-add">' + MARKED_RENDER.inline(structuredClone(node.target.tokens)) + '</ins>';
+      return el;
     }
     const token = node.op === 'removed' ? node.base : node.target;
-    span.innerHTML = MARKED_RENDER.inline(structuredClone(token.tokens || []));
-    if (node.op !== 'equal') span.className = node.op === 'added' ? 'd-added' : 'd-removed';
-    return span;
+    el.innerHTML = MARKED_RENDER.inline(structuredClone(token.tokens || []));
+    if (node.op !== 'equal') el.className = node.op === 'added' ? 'd-added' : 'd-removed';
+    return el;
   }
 
   // marked keeps a task item's checkbox outside its words; a rebuilt item puts
