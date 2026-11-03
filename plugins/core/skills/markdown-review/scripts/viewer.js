@@ -991,6 +991,7 @@
   function changedItemElements(node, item) {
     const baseLi = itemElement(node.base, item.base, null);
     const targetLi = itemElement(node.target, item.target, null);
+    if (item.children) return [nestedItemElement(item)];
     if (item.words) {
       const li = document.createElement('li');
       li.innerHTML = taskCheckbox(item.target) + marked.parseInline(wordsMarkdown(item.words));
@@ -999,6 +1000,30 @@
     baseLi.classList.add('d-removed');
     targetLi.classList.add('d-added');
     return [baseLi, targetLi];
+  }
+
+  // A multi-block item: each of its blocks diffed in place. The item's text
+  // line is inline content, not a paragraph, so it renders inline.
+  function nestedItemElement(item) {
+    const li = document.createElement('li');
+    li.insertAdjacentHTML('beforeend', taskCheckbox(item.target));
+    item.children.forEach(child => {
+      if (child.kind === 'text') li.appendChild(itemTextElement(child));
+      else markdownNodeElements(child).forEach(el => li.appendChild(el));
+    });
+    return li;
+  }
+
+  function itemTextElement(node) {
+    const span = document.createElement('span');
+    if (node.op === 'changed' && node.words) {
+      span.innerHTML = marked.parseInline(wordsMarkdown(node.words));
+      return span;
+    }
+    const token = node.op === 'removed' ? node.base : node.target;
+    span.innerHTML = MARKED_RENDER.inline(structuredClone(token.tokens || []));
+    if (node.op !== 'equal') span.className = node.op === 'added' ? 'd-added' : 'd-removed';
+    return span;
   }
 
   // marked keeps a task item's checkbox outside its words; a rebuilt item puts

@@ -94,6 +94,7 @@ function describeChange(base, target, render) {
   switch (base.type) {
     case 'paragraph':
     case 'heading':
+    case 'text': // the text line of a tight list item
       return { words: diffWords(base.tokens, target.tokens, render) };
     case 'list':
       return { items: diffListItems(base.items, target.items, render) };
@@ -114,12 +115,17 @@ function diffListItems(baseItems, targetItems, render) {
   return ops.map(op => {
     const node = { op: op.op, base: op.a, target: op.b, baseIndex: op.aIndex, targetIndex: op.bIndex };
     if (op.op !== 'changed') return node;
-    const baseInline = itemInlineTokens(op.a);
-    const targetInline = itemInlineTokens(op.b);
     // A ticked or unticked checkbox lives in item metadata, not in its words.
     const isCheckboxChange = op.a.task !== op.b.task || op.a.checked !== op.b.checked;
-    if (baseInline === null || targetInline === null || isCheckboxChange) return Object.assign(node, { replaced: true });
-    return Object.assign(node, { words: diffWords(baseInline, targetInline, render) });
+    if (isCheckboxChange) return Object.assign(node, { replaced: true });
+    const baseInline = itemInlineTokens(op.a);
+    const targetInline = itemInlineTokens(op.b);
+    if (baseInline !== null && targetInline !== null) {
+      return Object.assign(node, { words: diffWords(baseInline, targetInline, render) });
+    }
+    // An item holding several blocks (its text line plus a nested list, say)
+    // diffs those blocks, so an edit deep inside marks only what changed.
+    return Object.assign(node, { children: diffBlocks(withoutSpace(op.a.tokens), withoutSpace(op.b.tokens), render) });
   });
 }
 
@@ -128,8 +134,8 @@ function itemKey(item, render) {
   return JSON.stringify([item.task, item.checked, render.blocks(clone(item.tokens))]);
 }
 
-// A simple item holds one text or paragraph block; nested lists and multi-block
-// items have no single run of words and are diffed as a whole.
+// A simple item holds one text or paragraph block, a single run of words;
+// multi-block items (nested lists, several paragraphs) return null.
 function itemInlineTokens(item) {
   if (item.tokens.length !== 1 || !item.tokens[0].tokens) return null;
   return item.tokens[0].tokens;

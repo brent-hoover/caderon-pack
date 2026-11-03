@@ -9,6 +9,7 @@ A Gherkin step change is marked inside its scenario
 A plain-text doc shows changed lines
 Identical revisions show no change marking
 A code fence change is marked per line
+a nested list item edit marks only its words
 a removed table column is marked
 a task item keeps its checkbox when its text changes
 a heading level change is marked

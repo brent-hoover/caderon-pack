@@ -194,6 +194,19 @@ test('a closing tag inside an html comment does not close a container', () => {
   assert.match(blocks[0].text, /<li>hidden item<\/li>[\s\S]*<\/details>/);
 });
 
+test('an edit inside a nested list marks only the changed words', () => {
+  const tree = diff('- **server:**\n  - Watch it when it grows.\n  - Other line.\n',
+    '- **server:**\n  - Watch it when it shrinks.\n  - Other line.\n');
+
+  const outer = tree.nodes[0].items[0];
+  assert.strictEqual(outer.op, 'changed');
+  assert.strictEqual(outer.replaced, undefined);
+  assert.deepStrictEqual(outer.children.map(n => [n.kind, n.op]), [['text', 'equal'], ['list', 'changed']]);
+  const inner = outer.children[1].items;
+  assert.deepStrictEqual(inner.map(item => item.op), ['changed', 'equal']);
+  assert.deepStrictEqual(changedRuns(inner[0].words), [{ op: 'removed', text: 'grows.' }, { op: 'added', text: 'shrinks.' }]);
+});
+
 const LOGIN_FEATURE = 'Feature: Login\n\n' +
   '  Scenario: Good password\n    Given a user\n    Then the user sees the dashboard\n\n' +
   '  Scenario: Bad password\n    Then an error shows\n';

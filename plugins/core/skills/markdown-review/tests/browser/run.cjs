@@ -36,6 +36,7 @@ const CHECKS = [
   { name: 'A plain-text doc shows changed lines', run: checkPlainTextChange },
   { name: 'Identical revisions show no change marking', run: checkIdenticalRevisions },
   { name: 'A code fence change is marked per line', run: checkCodeLineChange },
+  { name: 'a nested list item edit marks only its words', run: checkNestedListItemChange },
   { name: 'a removed table column is marked', run: checkRemovedTableColumn },
   { name: 'a task item keeps its checkbox when its text changes', run: checkTaskCheckboxKept },
   { name: 'a heading level change is marked', run: checkHeadingLevelChange },
@@ -211,6 +212,16 @@ function checkCodeLineChange() {
     expectDeep(evaluate(TEXTS_OF('#doc pre del.d-del')), ['2'], 'removed words');
     expectDeep(evaluate(TEXTS_OF('#doc pre ins.d-add')), ['3'], 'added words');
   });
+}
+
+function checkNestedListItemChange() {
+  withDiff('doc.md', '- **server:**\n  - Watch it when it grows.\n  - Other line.\n',
+    '- **server:**\n  - Watch it when it shrinks.\n  - Other line.\n', () => {
+      expectDeep(evaluate(TEXTS_OF('#doc del.d-del')), ['grows.'], 'removed words');
+      expectDeep(evaluate(TEXTS_OF('#doc ins.d-add')), ['shrinks.'], 'added words');
+      expectEqual(evaluate('document.querySelectorAll("#doc .d-added, #doc .d-removed").length'), 0, 'whole-block marks');
+      expectEqual(evaluate('document.querySelectorAll("#doc li").length'), 3, 'list items');
+    });
 }
 
 function checkRemovedTableColumn() {
