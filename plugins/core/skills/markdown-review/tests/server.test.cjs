@@ -8,6 +8,7 @@ const net = require('node:net');
 
 const SCRIPTS = path.join(__dirname, '..', 'scripts');
 const TOKEN = 'a'.repeat(64);
+const { recordRevision } = require(path.join(SCRIPTS, 'revisions.cjs'));
 
 let proc = null;
 let base = null;
@@ -58,6 +59,7 @@ before(async () => {
   manifestFile = path.join(sessionDir, 'manifest.json');
   stateDir = path.join(sessionDir, 'state');
   fs.writeFileSync(manifestFile, JSON.stringify([path.join(docsDir, 'plan.md')]));
+  recordRevision(path.join(docsDir, 'plan.md'));
 
   proc = spawnServer(sessionDir, TOKEN);
   const info = await waitForStart(proc);
@@ -90,19 +92,22 @@ test('serves viewer with inlined marked and viewer scripts', async () => {
   assert.doesNotMatch(body, /<!-- VIEWER_JS -->/);
   assert.doesNotMatch(body, /<!-- GHERKIN_JS -->/);
   assert.match(body, /function parseGherkinBlocks/);
+  assert.doesNotMatch(body, /<!-- REVISION_DIFF_JS -->/);
+  assert.match(body, /function diffMarkdown/);
   assert.match(body, /marked/);
   assert.match(body, /refreshDocs/);
 });
 
-test('/docs lists manifest entries with ids and mtimes', async () => {
+test('/docs lists manifest entries with ids, mtimes and latest revisions', async () => {
   const docs = await (await get('/docs')).json();
   assert.strictEqual(docs.length, 1);
   assert.strictEqual(docs[0].id, 0);
   assert.ok(docs[0].path.endsWith('/plan.md'));
   assert.strictEqual(typeof docs[0].mtime, 'number');
+  assert.strictEqual(docs[0].revision, 1);
 });
 
-test('/doc/<id> returns raw markdown', async () => {
+test('/doc/<id> returns the latest revision\'s raw markdown', async () => {
   const r = await get('/doc/0');
   assert.strictEqual(r.status, 200);
   assert.match(await r.text(), /# Test Plan/);
@@ -293,3 +298,205 @@ test('Given the cmux call fails, when comments are submitted, then the failure i
     assert.match(fs.readFileSync(path.join(ring.stateDir, 'events'), 'utf-8'), /kept/);
   } finally { ring.p.kill(); }
 });
+
+// ===== revisions =====
+// Scenarios: feature-work/markdown-review-history/scenarios/viewer-shows-revisions.feature
+
+const FIRST_DRAFT = '# Plan\n\nFirst draft.\n';
+const SECOND_DRAFT = '# Plan\n\nSecond draft.\n';
+const NOTICE_TIMEOUT_MS = 2000;
+// Longer than the 1s index poll plus slack, so a missed notice would have arrived.
+const QUIET_PERIOD_MS = 3000;
+
+function runScript(name, args) {
+  return require('node:child_process').spawnSync('node', [path.join(SCRIPTS, name), ...args], { encoding: 'utf-8' });
+}
+
+// Serves a fresh doc through serve-doc.cjs and waits until the server lists it.
+async function servedDoc(name, content) {
+  const doc = path.join(docsDir, name);
+  fs.writeFileSync(doc, content);
+  const r = runScript('serve-doc.cjs', ['--session-dir', sessionDir, doc]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  for (let waited = 0; waited < 3000; waited += 100) {
+    const docs = await (await get('/docs')).json();
+    const entry = docs.find(d => d.path === doc);
+    if (entry) return { doc, id: entry.id };
+    await sleep(100);
+  }
+  throw new Error('server never listed ' + doc);
+}
+
+// Collects every server→client message until close() is called.
+function listen() {
+  const port = Number(base.split(':').pop());
+  const ws = new WebSocket('ws://127.0.0.1:' + port + '/?key=' + TOKEN);
+  const messages = [];
+  ws.onmessage = (m) => messages.push(JSON.parse(m.data));
+  const opened = new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+  return { opened, messages, close: () => ws.close() };
+}
+
+async function waitForMessage(messages, matches, timeoutMs) {
+  for (let waited = 0; waited < timeoutMs; waited += 50) {
+    const found = messages.find(matches);
+    if (found) return found;
+    await sleep(50);
+  }
+  return null;
+}
+
+test('A revise pushes the new revision to the browser', async () => {
+  const { doc, id } = await servedDoc('pushes.md', FIRST_DRAFT);
+  const browser = listen();
+  await browser.opened;
+  fs.writeFileSync(doc, SECOND_DRAFT);
+
+  const r = runScript('revise.cjs', ['--session-dir', sessionDir, doc]);
+
+  assert.strictEqual(r.status, 0, r.stderr);
+  const notice = await waitForMessage(browser.messages, m => m.type === 'revision' && m.id === id, NOTICE_TIMEOUT_MS);
+  browser.close();
+  assert.deepStrictEqual(notice, { type: 'revision', id, revision: 2 });
+  assert.strictEqual(await (await get('/doc/' + id)).text(), SECOND_DRAFT);
+});
+
+test('Editing the file without revising changes nothing the operator sees', async () => {
+  const { doc, id } = await servedDoc('unrevised.md', FIRST_DRAFT);
+  const browser = listen();
+  await browser.opened;
+
+  fs.writeFileSync(doc, '# Plan\n\nHalf-done edit');
+
+  const notice = await waitForMessage(browser.messages, m => m.id === id, QUIET_PERIOD_MS);
+  browser.close();
+  assert.strictEqual(notice, null);
+  assert.strictEqual(await (await get('/doc/' + id)).text(), FIRST_DRAFT);
+});
+
+test('History survives a server restart', async () => {
+  const { doc } = await servedDoc('restart.md', FIRST_DRAFT);
+  fs.writeFileSync(doc, SECOND_DRAFT);
+  assert.strictEqual(runScript('revise.cjs', ['--session-dir', sessionDir, doc]).status, 0);
+  const newSession = fs.mkdtempSync(path.join(os.tmpdir(), 'mdreview-restart-'));
+  fs.writeFileSync(path.join(newSession, 'manifest.json'), '[]\n');
+  const newToken = 'c'.repeat(64);
+  const restarted = spawnServer(newSession, newToken);
+  try {
+    const info = await waitForStart(restarted);
+    const r = runScript('serve-doc.cjs', ['--session-dir', newSession, doc]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    await sleep(1000);
+
+    const revisions = await (await fetch('http://127.0.0.1:' + info.port + '/revisions/0',
+      { headers: { cookie: 'mdreview-key-' + info.port + '=' + newToken } })).json();
+
+    assert.deepStrictEqual(revisions.map(e => e.revision), [1, 2]);
+  } finally {
+    restarted.kill();
+  }
+});
+
+test('A doc whose history directory was deleted is reported, not silently re-created', async () => {
+  const { doc, id } = await servedDoc('deleted-history.md', FIRST_DRAFT);
+  fs.rmSync(path.join(docsDir, '.revisions', 'deleted-history.md'), { recursive: true });
+
+  const r = await get('/doc/' + id);
+
+  assert.strictEqual(r.status, 404);
+  const body = await r.text();
+  assert.ok(body.includes(doc), body);
+  assert.match(body, /has no revisions/);
+  assert.ok(!fs.existsSync(path.join(docsDir, '.revisions', 'deleted-history.md')));
+});
+
+test('deleting a revision index does not broadcast or crash', async () => {
+  const { id } = await servedDoc('deleted-index.md', FIRST_DRAFT);
+  const browser = listen();
+  await browser.opened;
+
+  fs.rmSync(path.join(docsDir, '.revisions', 'deleted-index.md', 'index.jsonl'));
+
+  const notice = await waitForMessage(browser.messages, m => m.id === id, QUIET_PERIOD_MS);
+  browser.close();
+  assert.strictEqual(notice, null);
+  assert.strictEqual((await get('/docs')).status, 200);
+});
+
+test('/doc/<id>/rev/<n> returns that revision and 404s a bad number', async () => {
+  const { doc, id } = await servedDoc('by-number.md', FIRST_DRAFT);
+  fs.writeFileSync(doc, SECOND_DRAFT);
+  assert.strictEqual(runScript('revise.cjs', ['--session-dir', sessionDir, doc]).status, 0);
+
+  assert.strictEqual(await (await get('/doc/' + id + '/rev/1')).text(), FIRST_DRAFT);
+  assert.strictEqual(await (await get('/doc/' + id + '/rev/2')).text(), SECOND_DRAFT);
+  assert.strictEqual((await get('/doc/' + id + '/rev/3')).status, 404);
+  assert.strictEqual((await get('/doc/' + id + '/rev/0')).status, 404);
+  assert.strictEqual((await get('/doc/' + id + '/rev/x')).status, 404);
+});
+
+
+test('recreated history after a deletion is announced', async () => {
+  const { doc, id } = await servedDoc('recreated.md', FIRST_DRAFT);
+  fs.writeFileSync(doc, SECOND_DRAFT);
+  assert.strictEqual(runScript('revise.cjs', ['--session-dir', sessionDir, doc]).status, 0);
+  await sleep(1500);
+  fs.rmSync(path.join(docsDir, '.revisions', 'recreated.md'), { recursive: true });
+  await sleep(1500);
+  const browser = listen();
+  await browser.opened;
+
+  assert.strictEqual(runScript('revise.cjs', ['--session-dir', sessionDir, doc]).status, 0);
+
+  const notice = await waitForMessage(browser.messages, m => m.type === 'revision' && m.id === id, NOTICE_TIMEOUT_MS);
+  browser.close();
+  assert.deepStrictEqual(notice, { type: 'revision', id, revision: 1 });
+});
+
+test('a revision file missing from the index is not served', async () => {
+  const { id } = await servedDoc('unindexed.md', FIRST_DRAFT);
+  fs.writeFileSync(path.join(docsDir, '.revisions', 'unindexed.md', '0002.rev'), 'crashed before indexing\n');
+
+  assert.strictEqual((await get('/doc/' + id + '/rev/2')).status, 404);
+});
+
+test('history deleted and recreated within one poll is announced', async () => {
+  const { doc, id } = await servedDoc('swapped.md', FIRST_DRAFT);
+  const browser = listen();
+  await browser.opened;
+  fs.rmSync(path.join(docsDir, '.revisions', 'swapped.md'), { recursive: true });
+  fs.writeFileSync(doc, SECOND_DRAFT);
+
+  assert.strictEqual(runScript('revise.cjs', ['--session-dir', sessionDir, doc]).status, 0);
+
+  const notice = await waitForMessage(browser.messages, m => m.type === 'revision' && m.id === id, NOTICE_TIMEOUT_MS);
+  browser.close();
+  assert.deepStrictEqual(notice, { type: 'revision', id, revision: 1 });
+  assert.strictEqual(await (await get('/doc/' + id)).text(), SECOND_DRAFT);
+});
+
+test('/docs carries the latest revision hash', async () => {
+  const { id } = await servedDoc('hashed.md', FIRST_DRAFT);
+
+  const docs = await (await get('/docs')).json();
+
+  assert.match(docs[id].sha256, /^[0-9a-f]{64}$/);
+});
+
+
+test('a revision requested with a stale hash is refused', async () => {
+  const { id } = await servedDoc('stale-hash.md', FIRST_DRAFT);
+  const docs = await (await get('/docs')).json();
+
+  assert.strictEqual((await get('/doc/' + id + '/rev/1?sha256=' + docs[id].sha256)).status, 200);
+  assert.strictEqual((await get('/doc/' + id + '/rev/1?sha256=' + 'f'.repeat(64))).status, 409);
+});
+
+test('a revision file changed after indexing is refused', async () => {
+  const { id } = await servedDoc('tampered.md', FIRST_DRAFT);
+  const docs = await (await get('/docs')).json();
+  fs.writeFileSync(path.join(docsDir, '.revisions', 'tampered.md', '0001.rev'), 'replaced after indexing\n');
+
+  assert.strictEqual((await get('/doc/' + id + '/rev/1?sha256=' + docs[id].sha256)).status, 409);
+});
+

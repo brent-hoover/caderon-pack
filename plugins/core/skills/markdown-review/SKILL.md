@@ -1,14 +1,19 @@
 ---
 name: markdown-review
-description: Use when you have authored documents (markdown plans, designs, reports, analyses; Gherkin .feature files; other text files) that the user should read and give feedback on. Serves them to the user's browser — markdown rendered, .feature files as Gherkin, anything else as numbered source — with a multi-doc sidebar, live reload on edits, inline comments, and an Approve button; browser feedback wakes you automatically. Use instead of making the user read raw files in the worktree. Trigger phrases include "show me the doc", "let me review the plan", "render the report", "open it in the browser".
+description: Use when you have authored documents (markdown plans, designs, reports, analyses; Gherkin .feature files; other text files) that the user should read and give feedback on. Serves them to the user's browser — markdown rendered, .feature files as Gherkin, anything else as numbered source — with a multi-doc sidebar, revision history with GitHub-style rich diffs, inline comments that carry forward across revisions, and an Approve button; browser feedback wakes you automatically. Use instead of making the user read raw files in the worktree. Trigger phrases include "show me the doc", "let me review the plan", "render the report", "open it in the browser".
 ---
 
 # Markdown Review
 
 Serve agent-authored docs to the user's browser for reading and feedback.
-Docs are served from their real paths — edit them in place and the browser
-live-reloads. User feedback (inline comments, doc-level comments, approvals)
-lands in a JSONL events file; a background watcher wakes you when it arrives.
+Docs stay at their real paths. The user only ever sees **revisions**: copies
+you record when a round of edits is ready. Edit a doc in place as much as you
+like, then run `revise.cjs`; your edits are not visible to the user until you
+run `revise.cjs`. Each new revision shows as a rich diff (additions green,
+removals red) against the one the user last viewed.
+
+User feedback (inline comments, doc-level comments, approvals) lands in a
+JSONL events file; a background watcher wakes you when it arrives.
 
 How each doc is shown, by extension:
 - `.md` / `.markdown` — rendered; the user can toggle to Source.
@@ -47,8 +52,12 @@ If launched in the background without captured stdout, read
 
 ```bash
 node "$SKILL_DIR"/scripts/serve-doc.cjs --session-dir <session_dir> path/to/doc.md
+# {"type":"revised","doc":"/abs/path/doc.md","revision":1}
+# {"type":"docs-added","added":1,…}
 ```
 
+- Serving a doc records its current content as **revision 1**. Serve a doc
+  when its first draft is ready for review.
 - Add each doc you want reviewed; the sidebar lists them in add-order and the
   browser shows the newest one.
 - Relative image references in a doc (`![](diagrams/arch.png)`) are served
@@ -56,13 +65,41 @@ node "$SKILL_DIR"/scripts/serve-doc.cjs --session-dir <session_dir> path/to/doc.
 - To remove a doc, edit `<session_dir>/manifest.json` (a JSON array of
   absolute paths) — the server picks it up within a second.
 
+## Revising docs
+
+After each round of edits to a served doc, record the result:
+
+```bash
+node "$SKILL_DIR"/scripts/revise.cjs --session-dir <session_dir> path/to/doc.md [more docs…]
+# {"type":"revised","doc":"/abs/path/doc.md","revision":2}
+# {"type":"unchanged","doc":"/abs/path/doc.md","revision":2}   <- content matches the latest revision
+```
+
+- Revise once a round is complete, not after every write: each revision is
+  a step the user reviews and diffs.
+- Exit 1 with a message on stderr if the doc isn't served (serve it first),
+  the file is missing, or there is no live session.
+- History lives beside each doc in `.revisions/<doc file name>/`
+  (`index.jsonl` plus one `NNNN.rev` copy per revision). It is plain files
+  and is not gitignored, so `git add <dir>` commits it — that's intended:
+  history survives restarts and can be committed. Text you delete from a doc
+  stays in its history; if the doc held something that must not be kept
+  (a secret), delete that `.revisions/<doc file name>/` directory.
+- If revise fails with "stale revision lock", a revise process died holding
+  the lock: check no revise is running, delete the lock file it names, and
+  run revise again.
+
 ## The review loop
 
-1. Add or edit docs (edit in place — the browser live-reloads).
-2. Tell the user what's ready and share the URL. Tell them to leave comments
+1. Add or edit docs in place.
+2. Record the round: run `revise.cjs` on every doc you changed:
+   ```bash
+   node "$SKILL_DIR"/scripts/revise.cjs --session-dir <session_dir> <changed docs…>
+   ```
+3. Tell the user what's ready and share the URL. Tell them to leave comments
    on a doc, then click **Submit comments** (or **Approve**) on that doc when
    done — saved comments alone don't reach you. Submit is per doc.
-3. **Arm the watcher**, then end your turn:
+4. **Arm the watcher**, then end your turn:
    ```bash
    node "$SKILL_DIR"/scripts/wait-for-feedback.cjs --session-dir <session_dir> --status
    # {"watching":false} -> arm it; {"watching":true} -> one is already running, skip
@@ -72,15 +109,26 @@ node "$SKILL_DIR"/scripts/serve-doc.cjs --session-dir <session_dir> path/to/doc.
    The watcher exits when the user clicks Submit comments or Approve on a doc,
    which gives you a new turn with that doc's comments and no terminal input. If you run inside cmux, the
    server also rings your cmux pane at that moment.
-4. When it exits, act on its output (below), merged with anything the user
+5. When it exits, act on its output (below), merged with anything the user
    typed in the terminal — the terminal is primary. Apply feedback by editing
-   docs in place.
-5. **Before ending every turn while the review is open, repeat step 3**
-   (status check, then arm if not watching).
+   docs in place, then go back to step 2.
+6. **Before ending every turn while the review is open, repeat step 4**
+   (status check, then arm if not watching), after revising anything you
+   changed.
 
 Never edit or truncate `<state_dir>/events` or `events.cursor`: `events` is
 the session's append-only feedback history and the watcher tracks what you
 have already been given. To re-read past feedback, read `events` directly.
+
+### What the user sees
+
+- A doc with a revision they haven't viewed opens as a rich diff from the
+  last revision they viewed; **Full document** shows the clean revision.
+- They can pick any two revisions to compare, and **Changes since approved**
+  diffs from their last approval to the latest.
+- Comments from earlier revisions stay on the doc, badged **open** (the text
+  they were on is unchanged) or **addressed in revision k** (it changed, or
+  was removed).
 
 ### Watcher exit codes
 
@@ -98,30 +146,38 @@ consumes that agent's feedback. A restarted server gets a **new**
 ### Event format
 
 ```jsonl
-{"type":"comment","doc":"/abs/path/plan.md","view":"rendered","blockIndex":12,"quote":"first ~120 chars of the block","selection":"selected text or null","comment":"…","timestamp":1706000101000}
-{"type":"comment","doc":"/abs/path/plan.md","view":"source","line":42,"quote":"text of that line","selection":null,"comment":"…","timestamp":1706000101500}
-{"type":"comment","doc":"/abs/path/a.feature","view":"gherkin","blockIndex":3,"line":28,"scenario":"Scenario name","quote":"Scenario: Scenario name","selection":null,"comment":"…","timestamp":1706000101800}
-{"type":"comment","doc":"/abs/path/plan.md","scope":"doc","comment":"overall feedback","timestamp":1706000102000}
-{"type":"approve","doc":"/abs/path/plan.md","timestamp":1706000103000}
+{"type":"comment","doc":"/abs/path/plan.md","revision":2,"view":"rendered","blockIndex":12,"quote":"first ~120 chars of the block","selection":"selected text or null","comment":"…","timestamp":1706000101000}
+{"type":"comment","doc":"/abs/path/plan.md","revision":2,"view":"source","line":42,"quote":"text of that line","selection":null,"comment":"…","timestamp":1706000101500}
+{"type":"comment","doc":"/abs/path/a.feature","revision":1,"view":"gherkin","blockIndex":3,"line":28,"scenario":"Scenario name","quote":"Scenario: Scenario name","selection":null,"comment":"…","timestamp":1706000101800}
+{"type":"comment","doc":"/abs/path/plan.md","revision":2,"scope":"doc","comment":"overall feedback","timestamp":1706000102000}
+{"type":"approve","doc":"/abs/path/plan.md","revision":2,"sha256":"…","timestamp":1706000103000}
 {"type":"submit","doc":"/abs/path/plan.md","timestamp":1706000104000}
 ```
 
 A `submit` carries no comment text: it means "the comments on this doc before
 me are a finished batch".
 
+`revision` is the revision the user was looking at. A comment's anchor
+(`line`, `quote`, `blockIndex`) refers to **that revision**, which may be
+older than the file on disk: read it with
+`.revisions/<doc file name>/NNNN.rev` if the doc has changed since.
+
 Locate an inline comment by `line` when present (1-based source line; for
 Gherkin, the scenario/block header line), else by grepping `quote` in the
 source — `occurrence` (0-based) counts earlier blocks/lines in the same view
 whose whole quote is identical (e.g. a second `## Notes` heading is 1), not
-every grep hit of the text — else by `blockIndex` (top-level rendered block for `rendered`, Gherkin
-block for `gherkin`). Events without `view` come from older viewers — treat
-them as `rendered`. Delivery is at-least-once: rarely, an event may be
-delivered twice.
+every grep hit of the text — else by `blockIndex` (top-level block for
+`rendered`, Gherkin block for `gherkin`). Events without `view` come from
+older viewers — treat them as `rendered`; events without `revision` were made
+on revision 1. Delivery is at-least-once: rarely, an event may be delivered
+twice.
 
-An `approve` event means the user signed off on that doc — but only if you
-have not edited the doc after the approval's timestamp and no comments on it
-follow it. In that case proceed without re-asking. If you edited the doc
-after approval, the approval is stale; ask again.
+An `approve` event means the user signed off on that doc. The approval is
+current only if its `revision` is the doc's latest revision, its `sha256`
+matches that revision's entry in `.revisions/<doc file name>/index.jsonl`
+(history recreated from a checkout can reuse a number for other content), and
+no comments on the doc follow it — then proceed without re-asking. If you
+have revised the doc since, the approval is stale; ask again.
 
 ## Health check (before every URL mention or doc push)
 
@@ -129,8 +185,10 @@ The server may have idle-timed out (default 4h). Check:
 `<state_dir>/server-info` exists AND `<state_dir>/server-stopped` does not.
 If it's down, restart with the same `--project-dir` — same port, the user's
 open tab reconnects on its own; no need to re-share the URL. The restart
-creates a **new** `session_dir`: re-add the docs with `serve-doc.cjs` and arm
-the watcher on the new `session_dir`.
+creates a **new** `session_dir`: re-add the docs with `serve-doc.cjs` (their
+history is kept; unchanged docs record no new revision) and arm the watcher on
+the new `session_dir`. Approvals and comments belong to the old session and
+don't carry over.
 
 ## Cleaning up
 
@@ -139,6 +197,12 @@ the watcher on the new `session_dir`.
 ```
 
 Project sessions persist on disk (only `/tmp` sessions are deleted).
+
+## Upgrading from a viewer without revisions
+
+A browser tab opened before this version listens for the old update message.
+If the server restarts within about 15 seconds the tab keeps its old code:
+ask the user to reload it once.
 
 ## Remote / container environments
 

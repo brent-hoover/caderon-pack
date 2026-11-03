@@ -1,0 +1,41 @@
+smoke
+a details block keeps its markdown inside
+A changed word inside a paragraph is marked inline
+A new section is shown as added
+A removed paragraph is still shown, marked as removed
+One changed list item is marked without marking its siblings
+One changed table cell is marked without marking the rest of the table
+A Gherkin step change is marked inside its scenario
+A plain-text doc shows changed lines
+Identical revisions show no change marking
+A code fence change is marked per line
+a nested list item edit marks only its words
+a loose list item keeps its paragraphs apart
+a nested item keeps its reference link
+a loose task item keeps its checkbox beside its text
+a removed table column is marked
+a task item keeps its checkbox when its text changes
+a heading level change is marked
+a Gherkin table keeps its cells when a step changes
+a dropped Gherkin table column is marked
+A newly revised doc opens in diff view against the previous revision
+The operator switches from the diff to the full revised doc
+The operator switches from the full revised doc back to the diff
+The operator compares any two revisions
+The operator views changes since their approval
+A doc with only one revision has no diff
+Choosing a base revision newer than the target is rejected
+Approve is refused while a newer revision is loading
+a comment drafted while another doc loads stays on its own doc
+A comment on changed text is shown as addressed
+Clicking an addressed badge shows the change that addressed the comment
+a source-view addressed badge is not a link
+an addressed badge clicked while another doc loads changes nothing
+A comment on unchanged text is shown as still open
+A comment on removed text is shown as addressed by removal
+A comment from an older viewer without a revision is treated as revision 1
+A comment whose anchor cannot be found in its own revision is shown at doc level
+An approval records the revision it approves
+A comment records the revision it was made on
+An approval of an older revision is marked stale after a revise
+Approving while viewing an older revision is not allowed
