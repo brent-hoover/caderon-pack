@@ -52,6 +52,7 @@ const CHECKS = [
   { name: 'Approve is refused while a newer revision is loading', run: checkApproveWhileLoading },
   { name: 'a comment drafted while another doc loads stays on its own doc', run: checkCommentDuringSwitch },
   { name: 'A comment on changed text is shown as addressed', run: checkCommentAddressed },
+  { name: 'Clicking an addressed badge shows the change that addressed the comment', run: checkAddressedBadgeLink },
   { name: 'A comment on unchanged text is shown as still open', run: checkCommentOpen },
   { name: 'A comment on removed text is shown as addressed by removal', run: checkCommentRemoved },
   { name: 'A comment from an older viewer without a revision is treated as revision 1', run: checkCommentWithoutRevision },
@@ -454,6 +455,33 @@ function checkCommentAddressed() {
   withCarriedComment(CACHE_REVISION_1.replace('30 seconds', '60 seconds'), {}, () => {
     expectDeep(evaluate(COMMENT_CARDS), [{ block: 'The cache expires after 60 seconds.', statuses: ['addressed in revision 2'] }], 'comment cards');
   });
+}
+
+function checkAddressedBadgeLink() {
+  // Enough text before the comment that it starts out of view.
+  const filler = Array.from({ length: 60 }, (_, i) => 'Filler paragraph ' + i + '.').join('\n\n') + '\n\n';
+  const revision1 = CACHE_REVISION_1.replace('# Cache\n\n', '# Cache\n\n' + filler);
+  const review = startReview({ 'cache.md': revision1 });
+  try {
+    const doc = review.docPath('cache.md');
+    const blockIndex = 61; // heading, 60 filler paragraphs, then the commented one
+    review.appendEvent({ type: 'comment', doc: doc, view: 'rendered', revision: 1, blockIndex: blockIndex,
+      quote: COMMENTED, selection: null, comment: 'too short', timestamp: Date.now() });
+    review.appendEvent({ type: 'submit', doc: doc, timestamp: Date.now() });
+    review.edit('cache.md', revision1.replace('30 seconds', '60 seconds'));
+    review.revise('cache.md');
+    review.open();
+    review.waitFor('document.querySelector("#revinfo").textContent === "Revision 2 of 2"');
+    expectEqual(evaluate(DIFF_INFO), '', 'opens on the full document');
+    evaluate('document.querySelector("#doc").scrollTop = 0 || true');
+    evaluate('document.querySelector(".status-badge.addressed").click() || true');
+    review.waitFor(DIFF_INFO + ' === "Changes between revision 1 and revision 2"');
+    review.waitFor('(() => { const card = Array.from(document.querySelectorAll("#doc .comment-card"))' +
+      '.find(c => c.textContent.includes("too short")); if (!card) return false; const box = card.getBoundingClientRect();' +
+      ' const pane = document.querySelector("#doc").getBoundingClientRect(); return box.top >= pane.top && box.bottom <= pane.bottom; })()');
+  } finally {
+    review.stop();
+  }
 }
 
 function checkCommentOpen() {

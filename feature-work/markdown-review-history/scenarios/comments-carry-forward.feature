@@ -15,6 +15,13 @@ Feature: Comments carry forward across revisions
     Then the "too short" comment is shown on the "60 seconds" paragraph
     And it is marked "addressed in revision 2"
 
+  Scenario: Clicking an addressed badge shows the change that addressed the comment
+    Given revision 2 changes that paragraph to "The cache expires after 60 seconds."
+    And the operator is viewing revision 2 as the full document
+    When the operator clicks the "addressed in revision 2" badge
+    Then the viewer shows the diff from revision 1 to revision 2
+    And the "too short" comment card is scrolled into view
+
   Scenario: A comment on unchanged text is shown as still open
     Given revision 2 changes only a different paragraph
     When the operator views revision 2

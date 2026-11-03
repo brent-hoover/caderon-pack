@@ -363,11 +363,11 @@
       if (outcome.state === 'unanchored') {
         docLevel.push({ event: saved.event, note: 'Anchor not found: “' + saved.event.quote + '”' });
       } else if (outcome.state === 'open') {
-        attach(elAt(outcome.index), saved, 'open');
+        attach(elAt(outcome.index), saved, { label: 'open' });
       } else if (outcome.state === 'addressed') {
-        attach(elAt(outcome.index), saved, 'addressed in revision ' + outcome.revision);
+        attach(elAt(outcome.index), saved, { label: 'addressed in revision ' + outcome.revision, addressedIn: outcome.revision });
       } else {
-        const status = 'addressed in revision ' + outcome.revision + ' (text removed)';
+        const status = { label: 'addressed in revision ' + outcome.revision + ' (text removed)', addressedIn: outcome.revision };
         const el = removedBlockFor(saved.event, placement) || elAt(outcome.afterIndex);
         if (el) attach(el, saved, status);
         else docLevel.push({ event: saved.event, note: 'Commented text was removed: “' + saved.event.quote + '”', status: status });
@@ -402,21 +402,18 @@
     btn.disabled = pendingCount === 0;
   }
 
-  // status: where a carried-forward comment stands now ('open', 'addressed in
-  // revision k', …), or null for a comment on the revision on screen.
+  // status: where a carried-forward comment stands now — {label, addressedIn?}
+  // ('open', 'addressed in revision k', …) — or null for a comment on the
+  // revision on screen. An addressed badge links to the change that addressed it.
   function commentCard(saved, status) {
     const card = document.createElement('div');
     card.className = 'comment-card';
+    card.dataset.commentTimestamp = String(saved.event.timestamp);
     const badge = document.createElement('span');
     badge.className = 'badge ' + (saved.isSent ? 'sent' : 'pending');
     badge.textContent = saved.isSent ? 'sent' : 'pending';
     card.appendChild(badge);
-    if (status) {
-      const statusBadge = document.createElement('span');
-      statusBadge.className = 'status-badge ' + (status === 'open' ? 'open' : 'addressed');
-      statusBadge.textContent = status;
-      card.appendChild(statusBadge);
-    }
+    if (status) card.appendChild(statusBadge(saved, status));
     if (saved.event.selection) {
       const quote = document.createElement('blockquote');
       quote.className = 'sel';
@@ -428,6 +425,31 @@
     text.textContent = saved.event.comment;
     card.appendChild(text);
     return card;
+  }
+
+  function statusBadge(saved, status) {
+    const badge = document.createElement('span');
+    badge.textContent = status.label;
+    if (status.addressedIn === undefined) {
+      badge.className = 'status-badge open';
+      return badge;
+    }
+    badge.className = 'status-badge addressed';
+    badge.title = 'Show the change in revision ' + status.addressedIn + ' that addressed this';
+    badge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showAddressingChange(status.addressedIn, saved.event);
+    });
+    return badge;
+  }
+
+  // A revision number says nothing on its own: show the diff that made it,
+  // where this comment's card sits on the block as that revision changed it.
+  async function showAddressingChange(revision, event) {
+    comparisons.set(currentPath, { base: revision - 1, target: revision, lastBase: revision - 1 });
+    await renderDoc(currentId, { preserveScroll: false });
+    const card = document.querySelector('#doc .comment-card[data-comment-timestamp="' + event.timestamp + '"]');
+    if (card) card.scrollIntoView({ block: 'center' });
   }
 
   // How many earlier anchors share this anchor's quote — stored on the comment

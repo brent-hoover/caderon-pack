@@ -267,6 +267,12 @@ list, marked "anchor not found".
   range whose base predates the block (a paragraph added in 2 and removed in 3 is in neither end of
   a 1→3 diff).
 
+**Addressed badges are links** (operator, 2026-11-03: a bare revision number
+said nothing). Clicking "addressed in revision k" shows the diff from k−1 to k
+and scrolls to that comment's card, which sits on the block as revision k
+changed it (or on the removed block). Revision numbers alone don't say what a
+revision was.
+
 **Comments made in diff view.** They take `quote`, `occurrence` and `blockIndex` from the
 **target revision's unmarked block**, the anchor list of the target's full render, found through
 the node's target index. They never take them from the diff DOM, whose text mixes `<del>` and
@@ -491,3 +497,6 @@ and revise as a CLI.
 - 2026-10-30: `pairChanges` pairs longer runs by kind plus word similarity, not by position. Found
   while checking the step 8 rendering, where an edited code block after a removed paragraph showed
   as a whole removal plus an addition.
+- 2026-11-03: Addressed badges link to the diff that addressed the comment (operator, after
+  dogfooding: "how do I know what revision 3 is?"). Added a scenario to
+  `comments-carry-forward.feature`.
