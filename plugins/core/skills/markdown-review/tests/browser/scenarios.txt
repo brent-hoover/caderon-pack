@@ -12,6 +12,7 @@ A code fence change is marked per line
 a nested list item edit marks only its words
 a loose list item keeps its paragraphs apart
 a nested item keeps its reference link
+a loose task item keeps its checkbox beside its text
 a removed table column is marked
 a task item keeps its checkbox when its text changes
 a heading level change is marked

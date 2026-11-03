@@ -1036,13 +1036,16 @@
   // line is inline content, not a paragraph, so it renders inline.
   function nestedItemElement(item) {
     const li = document.createElement('li');
-    li.insertAdjacentHTML('beforeend', taskCheckbox(item.target));
     // A loose item's text blocks are paragraphs; a tight item's are inline.
     const textTag = item.target.loose ? 'p' : 'span';
     item.children.forEach(child => {
       if (child.kind === 'text') li.appendChild(itemTextElement(child, textTag));
       else markdownNodeElements(child).forEach(el => li.appendChild(el));
     });
+    // The checkbox sits beside the item's first line, as marked renders it:
+    // inside the first paragraph of a loose item.
+    const firstText = li.querySelector(':scope > ' + textTag);
+    (firstText || li).insertAdjacentHTML('afterbegin', taskCheckbox(item.target));
     return li;
   }
 

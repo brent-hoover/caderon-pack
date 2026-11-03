@@ -40,6 +40,7 @@ const CHECKS = [
   { name: 'a nested list item edit marks only its words', run: checkNestedListItemChange },
   { name: 'a loose list item keeps its paragraphs apart', run: checkLooseListItem },
   { name: 'a nested item keeps its reference link', run: checkNestedItemReferenceLink },
+  { name: 'a loose task item keeps its checkbox beside its text', run: checkLooseTaskItem },
   { name: 'a removed table column is marked', run: checkRemovedTableColumn },
   { name: 'a task item keeps its checkbox when its text changes', run: checkTaskCheckboxKept },
   { name: 'a heading level change is marked', run: checkHeadingLevelChange },
@@ -233,6 +234,12 @@ function checkNestedListItemChange() {
 function checkLooseListItem() {
   withDiff('doc.md', '- First para.\n\n  Second para.\n- Next.\n', '- First para, edited.\n\n  Second para.\n- Next.\n', () => {
     expectEqual(evaluate('document.querySelectorAll("#doc li:first-child p").length'), 2, 'paragraphs in the item');
+  });
+}
+
+function checkLooseTaskItem() {
+  withDiff('doc.md', '- [ ] First.\n\n  Second.\n- [ ] Next.\n', '- [ ] First, edited.\n\n  Second.\n- [ ] Next.\n', () => {
+    expectEqual(evaluate('document.querySelectorAll("#doc li:first-child > p:first-of-type > input[type=checkbox]").length'), 1, 'checkbox inside the first paragraph');
   });
 }
 
