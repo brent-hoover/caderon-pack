@@ -65,7 +65,7 @@ commits, and roborev reviews each one. Paths below are relative to
 It follows design steps 1–6:
 
 - **Lock:** `wx` on `lock` with the pid. Retry every 50ms, up to 5s, while the holder is alive.
-  A lock held by a dead pid fails loudly; it is never taken over.
+  A lock held by a dead pid fails loudly, naming the lock file to delete; it is never taken over.
 - **Repair and cleanup:** truncate a partial index tail, and remove leftover `*.tmp` files.
 - **Change check:** compare the SHA-256 hash with the latest revision.
 - **Write:** write a temp file, `fsync` it, then rename it to `NNNN.rev`.
@@ -130,7 +130,8 @@ The session-liveness and discovery code is ~20 lines that `revise.cjs` duplicate
 **What:**
 
 - **`scripts/server.cjs`:**
-  - Watch `index.jsonl` instead of the doc, and broadcast `{"type":"revision",…}` when it grows.
+  - Watch `index.jsonl` instead of the doc, and broadcast `{"type":"revision",…}` when its latest
+    entry changes (compared by revision, timestamp and hash, so recreated history is announced too).
   - If the index is deleted, `watchFile` fires with zeroed stats. That must neither broadcast nor
     crash.
   - `GET /doc/<id>` returns the latest revision, or the design's 404 message.
@@ -478,7 +479,7 @@ it makes scenario traceability a test.
 
 ### 12. End-to-end dogfood
 
-**Status:** ☐
+**Status:** ☑
 
 **What:** Run the worktree copy of the skill (`plugins/core/skills/markdown-review/scripts/`)
 against this feature's `plan.md`:
@@ -614,3 +615,11 @@ All 38 scenarios are covered, with no gaps.
 - 2026-10-30: Step 11 done. `SKILL.md` and `DESIGN.md` were rewritten whole, not patched. Core is
   bumped to 1.8.0. The coverage test was checked to fail when a scenario loses its test. Final
   totals: 118 node tests, 32 browser checks.
+- 2026-11-03: Step 12 done. The operator reviewed this plan with the worktree viewer: comments on
+  revisions 1 and 2, the agent revised to 3, and the operator approved revision 3 (approval hash
+  matched the index). Fixes found while dogfooding:
+  - a nested list item showed as a whole replaced block (`2cb273b`);
+  - addressed badges now link to the diff that addressed the comment, because a revision number
+    alone meant nothing (`f553e01`, operator's choice);
+  - roborev follow-ups on both (`59cf887`).
+  Totals: 120 node tests, 40 browser checks.
