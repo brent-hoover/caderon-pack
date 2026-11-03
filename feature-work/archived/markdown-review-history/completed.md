@@ -29,8 +29,8 @@ The markdown-review skill now works in **revisions**:
   approved".
 - **Comments carry forward.** Comments from earlier revisions carry forward, badged *open* or
   *addressed in revision k*. An addressed badge opens the diff that addressed it.
-- **Revision-tied feedback.** Comments and approvals record the revision, and its hash, they
-  were made on. Approve is only possible on the latest revision once it is on screen.
+- **Revision-tied feedback.** Comments record the revision they were made on; approvals record
+  the revision and its hash. Approve is only possible on the latest revision once it is on screen.
 
 Verified with 120 `node --test` tests and 41 browser checks: 40 named checks plus a smoke check (`tests/browser/run.cjs`). The
 operator also dogfooded the viewer on this feature's `plan.md`: comments on revisions 1 and 2, then
