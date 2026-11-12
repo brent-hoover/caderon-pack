@@ -3,10 +3,12 @@ name: start-bdd-feature
 description: >
   Guides through the full problem → BDD scenarios → design → plan documentation workflow for a new feature.
   Use when starting any new feature, initiative, or significant piece of work.
+  Not for small, well-understood infrastructure changes with no open design question — use
+  devops:start-devops-task for those.
   Trigger phrases: "start a feature", "new feature", "/start-bdd-feature", "/start-bdd-feature <slug>".
   Claude drives content generation; user reviews and approves each doc before advancing.
   BDD scenarios and scope.md are mandatory gates before plan.md can be written.
-version: 1.3.4
+version: 1.3.5
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
