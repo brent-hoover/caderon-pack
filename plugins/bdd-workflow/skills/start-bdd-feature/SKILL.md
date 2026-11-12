@@ -8,7 +8,7 @@ description: >
   Trigger phrases: "start a feature", "new feature", "/start-bdd-feature", "/start-bdd-feature <slug>".
   Claude drives content generation; user reviews and approves each doc before advancing.
   BDD scenarios and scope.md are mandatory gates before plan.md can be written.
-version: 1.3.5
+version: 1.4.0
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
@@ -52,8 +52,14 @@ If that directory does not exist, create it. ALL FEATURE WORK DOCS NEED TO GO IN
 
 Announce: `Writing docs to <doc-root>/<slug>/`
 
+**Scenarios do not go in the doc root.** `.feature` files are permanent tests: step definitions bind
+to them, and `close-bdd-feature` archives the doc dir. They go in `$PROJECT_ROOT/scenarios/<slug>/`
+(the layout the `pytest-bdd` and `godog` skills bind to). If the project already keeps `.feature`
+files somewhere outside the doc root, use `<that-dir>/<slug>/` instead. Below, `<scenarios-dir>`
+means whichever applies.
+
 ```bash
-mkdir -p <doc-root>/<slug>/scenarios
+mkdir -p <doc-root>/<slug> <scenarios-dir>
 if [ ! -e <doc-root>/README.md ] \
    && ! git ls-files --error-unmatch <doc-root>/README.md >/dev/null 2>&1 \
    && ! git cat-file -e HEAD:<doc-root>/README.md 2>/dev/null; then
@@ -185,7 +191,7 @@ Then ask, one at a time:
 For each distinct behavior identified in `problem.md`'s requirements and success criteria, write a
 `.feature` file. Use the template at `${CLAUDE_PLUGIN_ROOT}/skills/start-bdd-feature/templates/story.feature`.
 
-Save feature files to `<doc-root>/<slug>/scenarios/<behavior-slug>.feature`.
+Save feature files to `<scenarios-dir>/<behavior-slug>.feature` — never under `<doc-root>/`.
 Name files after the behavior they prove (e.g. `user-login.feature`, `payment-refund.feature`).
 
 Each `.feature` file **must** contain:
@@ -220,7 +226,8 @@ section must include all three solutions. Set `problem: ./problem.md` in frontma
 Write the draft to `<doc-root>/<slug>/design.md`.
 
 **Review step** (see *Automated review*): hand the design.md path to `design-reviewer`. The
-reviewer will also read the `scenarios/` directory — pass the absolute path to the slug directory.
+reviewer will also read the scenarios — pass the absolute path to the slug directory and the
+absolute path to `<scenarios-dir>`.
 Apply its Critical/Should-fix items and re-write.
 
 Present the reviewed draft to the user along with a 2–4 line summary of what the reviewer flagged
@@ -270,14 +277,14 @@ Draft `plan.md` from the template. The plan must contain:
   - **Scenarios**: which `.feature` file(s) pass when this step is complete
   - **Verify**: BDD test run command + expected pass count
 
-Every scenario in `scenarios/` must be covered by at least one plan step.
+Every scenario in `<scenarios-dir>` must be covered by at least one plan step.
 Flag any scenario not reachable by the steps as a gap.
 
 Set frontmatter to `design: ./design.md`.
 
 Write the draft to `<doc-root>/<slug>/plan.md`.
 
-**Review step** (see *Automated review*): hand the file to `plan-reviewer`, apply its
+**Review step** (see *Automated review*): hand the file and the absolute path to `<scenarios-dir>` to `plan-reviewer`, apply its
 Critical/Should-fix items, and re-write the doc.
 
 Present the reviewed draft to the user along with a 2–4 line summary of what the reviewer flagged
@@ -296,7 +303,7 @@ new file this run created. Otherwise leave `<doc-root>/README.md` alone; whateve
 belongs to the user, tracked or not.
 
 ```bash
-git add <doc-root>/<slug>/
+git add <doc-root>/<slug>/ <scenarios-dir>/
 git add <doc-root>/README.md      # ONLY if setup printed SEEDED_README
 git commit -m "docs(<slug>): add problem/design/scenarios/scope/plan"
 ```
@@ -305,7 +312,7 @@ Print summary:
 
 ```
 ✓ <doc-root>/<slug>/problem.md
-✓ <doc-root>/<slug>/scenarios/<n> feature files
+✓ <scenarios-dir>/<n> feature files
 ✓ <doc-root>/<slug>/design.md
 ✓ <doc-root>/<slug>/scope.md
 ✓ <doc-root>/<slug>/plan.md

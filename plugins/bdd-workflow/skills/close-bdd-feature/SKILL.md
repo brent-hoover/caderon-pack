@@ -6,7 +6,7 @@ description: >
   summarizing what shipped, runs a reviewer over it, and archives the feature docs.
   Trigger phrases: "close a feature", "finish the feature", "wrap up", "/close-bdd-feature",
   "/close-bdd-feature <slug>".
-version: 1.0.0
+version: 1.1.0
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
@@ -167,7 +167,23 @@ instructions rather than skipping the gate. Do not treat a missing tool as a pas
 
 Announce: **[PHASE: ARCHIVE]**
 
-Move the feature dir out of the active doc root so it reflects only in-progress work, then commit:
+Move the feature's **docs** out of the active doc root so it reflects only in-progress work. This
+phase never moves, edits, or deletes `.feature` files, step definitions, or any other test file —
+they are permanent tests and stay where they are (normally `scenarios/<slug>/` and `tests/`).
+
+**1. Guard.** Archiving must not break anything that points into the doc dir. Run both checks:
+
+```bash
+fd -e feature . <doc-root>/<slug>
+rg -l --fixed-strings "<doc-root>/<slug>/" --glob '!<doc-root>/**' .
+```
+
+If either prints anything, **stop — do not archive.** List the hits to the user. `.feature`
+files inside the doc dir are the old layout: they need to move to `scenarios/<slug>/` with their
+bindings updated, as a separate restructuring commit the user approves. A reference in a comment
+is reported too — it goes stale on archive — but the user decides whether it blocks.
+
+**2. Archive and commit:**
 
 ```bash
 mkdir -p <doc-root>/archived
@@ -176,12 +192,17 @@ git add -A <doc-root>/archived/<slug>
 git commit -m "docs(<slug>): complete and archive feature"
 ```
 
+**3. Re-verify.** Run the full scenario suite (the "Run all scenarios" command in `design.md`)
+and the project's test suite. The pass counts must match the run recorded in `completed.md`. A
+failure here means something still depended on the doc dir — report it, don't paper over it.
+
 Print summary:
 
 ```
 ✓ deferred.md resolved   (N done at close · N kept deferred · N permanently dropped, or "— none")
 ✓ completed.md written and reviewed
 ✓ mutation score: N% (N killed / N total) — passed ≥80% gate
-✓ archived to <doc-root>/archived/<slug>/
+✓ archived to <doc-root>/archived/<slug>/   (scenarios and tests untouched)
+✓ re-verified after archive: N scenarios passed, N tests passed
 Committed: docs(<slug>): complete and archive feature
 ```

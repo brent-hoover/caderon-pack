@@ -4,7 +4,7 @@ description: >
   Guide for implementing BDD scenarios in Python using pytest-bdd. Use when the project is Python
   and needs step definitions wired to Gherkin .feature files. Covers project layout, step
   definition patterns, fixture injection, scenario parametrization, and running scenarios.
-version: 1.0.0
+version: 1.0.1
 allowed-tools: Read, Write, Edit, Bash, Glob
 ---
 
@@ -15,8 +15,9 @@ allowed-tools: Read, Write, Edit, Bash, Glob
 ```
 project/
 ├── scenarios/               # .feature files (from start-bdd-feature workflow)
-│   ├── user-login.feature
-│   └── payment-refund.feature
+│   └── auth/                # one dir per feature slug — never inside feature-work/
+│       ├── user-login.feature
+│       └── payment-refund.feature
 ├── tests/
 │   └── step_defs/
 │       ├── conftest.py      # shared fixtures
@@ -25,7 +26,8 @@ project/
 └── pyproject.toml / setup.cfg
 ```
 
-Feature files live in `scenarios/` (owned by the workflow). Step definition files live in
+Feature files live in `scenarios/<feature-slug>/` (owned by the workflow). They are permanent
+tests: `close-bdd-feature` archives only the docs and never moves them. Step definition files live in
 `tests/step_defs/` and are named `test_<feature-slug>.py`.
 
 ## Installation
@@ -43,7 +45,7 @@ Each feature file gets a corresponding `test_<slug>.py`:
 from pytest_bdd import scenarios, given, when, then, parsers
 
 # Bind all scenarios in this file to the feature file
-scenarios("../../scenarios/user-login.feature")
+scenarios("../../scenarios/auth/user-login.feature")
 
 
 @given("the accounts service is running", target_fixture="service")
@@ -156,7 +158,7 @@ pytest-bdd handles `Scenario Outline` automatically — each row becomes a separ
 To scaffold step definitions from an existing feature file:
 
 ```bash
-pytest --generate-missing --feature scenarios/user-login.feature tests/step_defs/
+pytest --generate-missing --feature scenarios/auth/user-login.feature tests/step_defs/
 ```
 
 This prints stub `@given`/`@when`/`@then` functions for any steps not yet defined.

@@ -14,7 +14,7 @@ Each story maps to one or more `.feature` files. A story is done when all its sc
 
 | ID | Story | Feature file(s) | Status |
 |---|---|---|---|
-| S1 | As a `<role>`, I want `<goal>` so that `<benefit>` | `scenarios/<file>.feature` | ⬜ pending |
+| S1 | As a `<role>`, I want `<goal>` so that `<benefit>` | `scenarios/<slug>/<file>.feature` | ⬜ pending |
 | S2 |  |  | ⬜ pending |
 
 Status legend: ⬜ pending · 🚧 in progress · ✅ done · ⏸ deferred

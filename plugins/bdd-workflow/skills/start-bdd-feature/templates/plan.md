@@ -21,7 +21,7 @@ throwaway — it exists to coordinate the work, not to document the system.>
 resolved open questions, dependencies.>
 
 - [ ] `design.md` approved
-- [ ] All `.feature` files in `scenarios/` approved
+- [ ] All `.feature` files in `scenarios/<slug>/` approved
 - [ ] `scope.md` filled with objective, allowlist, and non-goals
 - [ ]
 
@@ -36,9 +36,9 @@ name the scenarios that pass when it completes — implementation is done when a
 
 **Why:** <What this step unblocks or achieves.>
 
-**Scenarios:** `scenarios/<file>.feature` — "<Scenario name(s)>"
+**Scenarios:** `scenarios/<slug>/<file>.feature` — "<Scenario name(s)>"
 
-**Verify:** `<pytest scenarios/<file>.feature -k "<scenario>" OR godog ./scenarios/<file>.feature>`
+**Verify:** `<pytest scenarios/<slug>/<file>.feature -k "<scenario>" OR godog ./scenarios/<slug>/<file>.feature>`
 Expected: exit 0, N scenario(s) passed
 
 ### 2. <Step name>
@@ -47,17 +47,17 @@ Expected: exit 0, N scenario(s) passed
 
 **Why:**
 
-**Scenarios:** `scenarios/<file>.feature` — "<Scenario name(s)>"
+**Scenarios:** `scenarios/<slug>/<file>.feature` — "<Scenario name(s)>"
 
 **Verify:**
 
 ## Scenario coverage
 
-<Confirm every scenario in `scenarios/` is addressed by at least one step above. Flag any gap.>
+<Confirm every scenario in `scenarios/<slug>/` is addressed by at least one step above. Flag any gap.>
 
 | Feature file | Scenario | Covered by step |
 |---|---|---|
-| `scenarios/<file>.feature` | `<Scenario name>` | Step N |
+| `scenarios/<slug>/<file>.feature` | `<Scenario name>` | Step N |
 
 ## Rollback
 

@@ -22,9 +22,9 @@ done — implementation is complete when all scenarios pass.>
 
 | Feature file | Behavior proven |
 |---|---|
-| `scenarios/<name>.feature` | <One-line description of the behavior> |
+| `scenarios/<slug>/<name>.feature` | <One-line description of the behavior> |
 
-Run all scenarios: `<pytest scenarios/ OR godog ./scenarios/>`
+Run all scenarios: `<pytest tests/ OR godog ./scenarios/<slug>/>`
 
 ## Approach
 

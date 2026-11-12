@@ -4,7 +4,7 @@ description: >
   Guide for implementing BDD scenarios in Go using godog (Cucumber for Go). Use when the project
   is Go and needs step definitions wired to Gherkin .feature files. Covers project layout, step
   registration patterns, TestMain wiring, table-driven scenarios, and running scenarios.
-version: 1.0.0
+version: 1.0.1
 allowed-tools: Read, Write, Edit, Bash, Glob
 ---
 
@@ -15,8 +15,9 @@ allowed-tools: Read, Write, Edit, Bash, Glob
 ```
 project/
 ├── scenarios/               # .feature files (from start-bdd-feature workflow)
-│   ├── user-login.feature
-│   └── payment-refund.feature
+│   └── auth/                # one dir per feature slug — never inside feature-work/
+│       ├── user-login.feature
+│       └── payment-refund.feature
 ├── internal/
 │   └── ...                  # production code
 └── features_test.go         # godog TestMain + step definitions
@@ -25,7 +26,7 @@ project/
     # step_defs_test.go      (step definitions)
 ```
 
-Feature files live in `scenarios/`. Step definitions live in `*_test.go` files at the package
+Feature files live in `scenarios/<feature-slug>/` and are never archived. Step definitions live in `*_test.go` files at the package
 level that owns the behavior being tested.
 
 ## Installation
@@ -140,7 +141,7 @@ func (s *testState) theResponseStatusIs(expected int) error {
 go test ./... -v
 
 # Run a single feature file (using godog CLI)
-godog scenarios/user-login.feature
+godog scenarios/auth/user-login.feature
 
 # Run with pretty output
 go test ./... -v -godog.format=pretty
@@ -157,7 +158,7 @@ go install github.com/cucumber/godog/cmd/godog@latest
 
 # Run feature files
 godog scenarios/
-godog scenarios/user-login.feature
+godog scenarios/auth/user-login.feature
 ```
 
 ## Table-driven scenarios (Scenario Outline)

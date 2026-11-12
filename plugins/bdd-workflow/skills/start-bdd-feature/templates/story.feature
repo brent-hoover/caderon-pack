@@ -1,4 +1,4 @@
-# scenarios/<behavior-slug>.feature
+# scenarios/<slug>/<behavior-slug>.feature  (repo root, not the doc dir)
 # Maps to: plan.md Step N
 # Scenario names below are copied verbatim into plan.md.
 #
