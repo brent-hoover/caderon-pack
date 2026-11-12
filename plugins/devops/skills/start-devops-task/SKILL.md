@@ -105,7 +105,7 @@ Do not show the doc to the user yet. Go to RED.
 
 Announce: **[RED]**
 
-**1. Scenarios.** Write `scenarios/<slug>.feature` (repo root, see SETUP step 5). One scenario per
+**1. Scenarios.** Write `scenarios/<slug>/<slug>.feature` (repo root, see SETUP step 5). One scenario per
 Acceptance bullet, same name. Declarative steps about the plan:
 
 ```gherkin
@@ -134,7 +134,7 @@ def plan_json(tmp_path_factory: pytest.TempPathFactory) -> dict:
 plan fails loudly instead of looking like a failed assertion.
 
 **3. Steps.** `tests/step_defs/test_<slug_underscored>.py`, bound with
-`scenarios("../../scenarios/<slug>.feature")`. Steps assert on `resource_changes`
+`scenarios("../../scenarios/<slug>/<slug>.feature")`. Steps assert on `resource_changes`
 (for the planned action: `create`, `update`, `delete`) and on
 `planned_values` / `resource_changes[].change.after` (for attributes). Never grep `.tf` source.
 
@@ -152,7 +152,7 @@ and what the reviewer flagged. Revise until the user approves.
 Commit the tests on approval:
 
 ```bash
-git add feature-work/<slug>/ scenarios/<slug>.feature tests/step_defs/ pyproject.toml uv.lock   # only paths you changed
+git add feature-work/<slug>/ scenarios/<slug>/<slug>.feature tests/step_defs/ pyproject.toml uv.lock   # only paths you changed
 git commit -m "test(<slug>): add failing plan scenarios"
 ```
 
