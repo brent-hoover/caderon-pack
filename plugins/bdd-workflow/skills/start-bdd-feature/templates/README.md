@@ -11,7 +11,7 @@ All paths below are relative to this directory, whatever it's called in this pro
 | Phase | Doc | Purpose |
 |-------|-----|---------|
 | PROBLEM | `<slug>/problem.md` | Current situation, what's wrong, complexity drivers, constraints, out-of-scope, success criteria. **No solutions.** |
-| DESIGN | `<slug>/scenarios/*.feature` | One file per behavior. Each needs a happy path, an edge case, and a failure case. **Hard gate — must be approved before planning.** |
+| DESIGN | `scenarios/<slug>/*.feature` (repo root, **not** in this directory) | One file per behavior. Each needs a happy path, an edge case, and a failure case. **Hard gate — must be approved before planning.** These are permanent tests, so they live with the tests and are never archived. |
 | DESIGN | `<slug>/design.md` | Three solutions (simplest / complete / optimal), the chosen one, interfaces, data shapes, risks, and the scenario list. |
 | DESIGN | `<slug>/scope.md` | Objective, allowlist of files the implementation may touch, non-goals — derived from the approved design. **Hard gate.** |
 | PLAN | `<slug>/plan.md` | Ordered steps, each sized for one PR, each with what / why / verify. Every scenario is covered by at least one step. |
@@ -27,7 +27,8 @@ Implementation happens after `plan.md` is approved: the scenarios run red, then 
   `plan.md` are each vetted by a reviewer subagent before you see them; scenarios and `scope.md` go
   straight to you. You give final approval either way.
 - `/close-bdd-feature <slug>` — resolves `deferred.md` (do now / keep deferred / drop), writes
-  `completed.md`, and moves the directory to `archived/<slug>/`.
+  `completed.md`, and moves the doc directory to `archived/<slug>/`. It never moves or edits
+  scenarios or tests.
 - `/scaffold-bdd-docs` — drops the blank templates into `feature-work/_templates/`.
 
 ## Conventions

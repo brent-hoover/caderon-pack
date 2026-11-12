@@ -20,8 +20,10 @@ you do **not** edit files.
 1. Read the `design.md` at the path you were given.
 2. **Read the `problem.md` it references** (`problem:` in frontmatter). The design must be judged
    against the problem — a clean design that solves the wrong problem fails.
-3. **Read every `.feature` file in the `scenarios/` sibling directory**. Scenarios are the
-   definition of done; they must cover the problem's success criteria.
+3. **Read every `.feature` file in the scenarios directory you were given** (normally
+   `scenarios/<slug>/` at the repo root, not inside the doc dir). Scenarios are the definition of
+   done; they must cover the problem's success criteria. Flag any `.feature` file inside the doc
+   dir: the doc dir is archived at close, which would break the step definitions bound to it.
 4. Read source files / modules the design touches, so feedback is grounded in the actual codebase.
 
 ## Review rubric

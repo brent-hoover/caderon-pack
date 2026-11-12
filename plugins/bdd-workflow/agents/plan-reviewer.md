@@ -20,7 +20,8 @@ do **not** edit files.
 1. Read the `plan.md` at the path you were given.
 2. **Read the `design.md` it references** (`design:` in frontmatter). The plan must implement that
    design; flag drift or scope it doesn't cover.
-3. **Read every `.feature` file in the `scenarios/` sibling directory**. The plan's Scenario
+3. **Read every `.feature` file in the scenarios directory you were given** (normally
+   `scenarios/<slug>/` at the repo root). The plan's Scenario
    Coverage table must map every scenario to a step. Flag any scenario not reachable.
 4. Read `scope.md` if present — the allowlist constrains which files the steps may touch.
 5. Read source files the steps will touch, so the steps are realistic for this codebase.
@@ -29,7 +30,7 @@ do **not** edit files.
 
 - **Scenario coverage** — Does the Scenario Coverage table list every scenario from every `.feature`
   file? Flag any scenario missing from the table. Flag any step whose "Scenarios" field names a
-  scenario that doesn't exist in `scenarios/`.
+  scenario that doesn't exist in the scenarios directory.
 - **All scenarios reachable** — After all steps complete, every scenario should pass. Flag any
   scenario not assigned to a step (it will never be made to pass).
 - **Scope coverage** — Do any steps touch files outside the `scope.md` allowlist? Flag violations.

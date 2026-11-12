@@ -6,7 +6,7 @@ description: >
   summarizing what shipped, runs a reviewer over it, and archives the feature docs.
   Trigger phrases: "close a feature", "finish the feature", "wrap up", "/close-bdd-feature",
   "/close-bdd-feature <slug>".
-version: 1.0.0
+version: 1.1.0
 allowed-tools: Read, Write, Bash, Glob, Task
 ---
 
@@ -21,9 +21,9 @@ Two-phase wrap-up: REVISIT DEFERRED → COMPLETE → archive. Pairs with `start-
 
 **1. Find the feature.**
 
-If a slug argument was passed (`/close-bdd-feature my-feature`), use it. Otherwise detect the doc root
-the same way start-bdd-feature does — read the project `CLAUDE.md`: if it mentions `feature-work/` the
-root is `feature-work/`, otherwise `docs/`. List the in-progress feature dirs (those with a
+The doc root is `feature-work/` at the project root — the same root start-bdd-feature writes to.
+If a slug argument was passed (`/close-bdd-feature my-feature`), use it. Otherwise list the
+in-progress feature dirs (those with a
 `plan.md` and **no** `completed.md`, excluding `archived/`). If exactly one, use it; if several, ask
 which; if none, say so and stop.
 
@@ -167,7 +167,27 @@ instructions rather than skipping the gate. Do not treat a missing tool as a pas
 
 Announce: **[PHASE: ARCHIVE]**
 
-Move the feature dir out of the active doc root so it reflects only in-progress work, then commit:
+Move the feature's **docs** out of the active doc root so it reflects only in-progress work. This
+phase never moves, edits, or deletes `.feature` files, step definitions, or any other test file —
+they are permanent tests and stay where they are (normally `scenarios/<slug>/` and `tests/`).
+
+**1. Guard.** Archiving must not break anything that points into the doc dir. Run both checks:
+
+```bash
+fd -e feature . <doc-root>/<slug>
+rg -l --fixed-strings "<doc-root>/<slug>/" --glob '!<doc-root>/**' .
+```
+
+If either prints anything, **stop — do not archive.** List the hits to the user. `.feature`
+files inside the doc dir are the old layout: they need to move to `scenarios/<slug>/` with their
+bindings updated, as a separate restructuring commit the user approves. A reference in a comment
+is reported too — it goes stale on archive — but the user decides whether it blocks.
+
+**2. Baseline.** Run the full scenario suite (the "Run all scenarios" command in `design.md`) and
+the project's test suite. Record the exact commands and the passed / failed / errored counts in
+the conversation. Any failure or error here stops the archive — report it.
+
+**3. Archive and commit:**
 
 ```bash
 mkdir -p <doc-root>/archived
@@ -176,12 +196,16 @@ git add -A <doc-root>/archived/<slug>
 git commit -m "docs(<slug>): complete and archive feature"
 ```
 
+**4. Re-verify.** Re-run the exact baseline commands. The counts must match the baseline. A
+difference means something still depended on the doc dir — report it, don't paper over it.
+
 Print summary:
 
 ```
 ✓ deferred.md resolved   (N done at close · N kept deferred · N permanently dropped, or "— none")
 ✓ completed.md written and reviewed
 ✓ mutation score: N% (N killed / N total) — passed ≥80% gate
-✓ archived to <doc-root>/archived/<slug>/
+✓ archived to <doc-root>/archived/<slug>/   (scenarios and tests untouched)
+✓ re-verified after archive: N scenarios, N tests passed — matches baseline
 Committed: docs(<slug>): complete and archive feature
 ```

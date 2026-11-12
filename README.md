@@ -10,7 +10,7 @@ organized into plugins that are enabled per machine.
 | `core` | all machines | `explain-code`, `conventional-commit`, `codebase-visualizer`, `code-quality`, `git-master`, `git-worktrees`, `vue-typescript`, `user-stories`, `bdd-specs`, `sqlite-dev`, `agent-teams`; `/quick-fix`, `/worktree` commands |
 | `go` | all machines | `go-best-practices`, `go-backend-workflow`, `go-concurrency-patterns`, `go-error-handling`, `go-interfaces` |
 | `python` | all machines | `python-best-practices` |
-| `devops` | work machines only | `helm-debugging`, `helm-values-management`, `k8s-manifest-generator`, `k8s-security-policies`, `terraform-skill` |
+| `devops` | work machines only | `helm-debugging`, `helm-values-management`, `k8s-manifest-generator`, `k8s-security-policies`, `terraform-skill`; `start-devops-task` (lightweight `task.md → failing Gherkin plan scenarios → implement` for small IaC changes, with a `test-adequacy-reviewer` agent) |
 | `doc-driven-development` | all machines | `start-feature` (`problem → design → plan`) + `close-feature` (revisit deferred → completed → archive) documentation lifecycle, with `problem-reviewer` / `design-reviewer` / `plan-reviewer` / `completion-reviewer` Opus agents vetting each doc; `/scaffold-docs` drops the bare templates into a project |
 | `bdd-workflow` | all machines | `start-bdd-feature` (`problem → Gherkin scenarios → design → plan`) + `close-bdd-feature`, with the same four Opus reviewer agents plus `pytest-bdd` / `godog` skills; `/scaffold-bdd-docs` drops the bare templates into a project |
 | `ticket-to-pr` | all machines | `/ticket-to-pr` and `/ticket-to-pr-finish` commands; clarify → tests → implement → roborev → PR workflow |
