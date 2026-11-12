@@ -183,7 +183,11 @@ files inside the doc dir are the old layout: they need to move to `scenarios/<sl
 bindings updated, as a separate restructuring commit the user approves. A reference in a comment
 is reported too — it goes stale on archive — but the user decides whether it blocks.
 
-**2. Archive and commit:**
+**2. Baseline.** Run the full scenario suite (the "Run all scenarios" command in `design.md`) and
+the project's test suite. Record the exact commands and the passed / failed / errored counts in
+the conversation. Any failure or error here stops the archive — report it.
+
+**3. Archive and commit:**
 
 ```bash
 mkdir -p <doc-root>/archived
@@ -192,9 +196,8 @@ git add -A <doc-root>/archived/<slug>
 git commit -m "docs(<slug>): complete and archive feature"
 ```
 
-**3. Re-verify.** Run the full scenario suite (the "Run all scenarios" command in `design.md`)
-and the project's test suite. The pass counts must match the run recorded in `completed.md`. A
-failure here means something still depended on the doc dir — report it, don't paper over it.
+**4. Re-verify.** Re-run the exact baseline commands. The counts must match the baseline. A
+difference means something still depended on the doc dir — report it, don't paper over it.
 
 Print summary:
 
@@ -203,6 +206,6 @@ Print summary:
 ✓ completed.md written and reviewed
 ✓ mutation score: N% (N killed / N total) — passed ≥80% gate
 ✓ archived to <doc-root>/archived/<slug>/   (scenarios and tests untouched)
-✓ re-verified after archive: N scenarios passed, N tests passed
+✓ re-verified after archive: N scenarios, N tests passed — matches baseline
 Committed: docs(<slug>): complete and archive feature
 ```
