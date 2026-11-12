@@ -21,9 +21,9 @@ Two-phase wrap-up: REVISIT DEFERRED → COMPLETE → archive. Pairs with `start-
 
 **1. Find the feature.**
 
-If a slug argument was passed (`/close-bdd-feature my-feature`), use it. Otherwise detect the doc root
-the same way start-bdd-feature does — read the project `CLAUDE.md`: if it mentions `feature-work/` the
-root is `feature-work/`, otherwise `docs/`. List the in-progress feature dirs (those with a
+The doc root is `feature-work/` at the project root — the same root start-bdd-feature writes to.
+If a slug argument was passed (`/close-bdd-feature my-feature`), use it. Otherwise list the
+in-progress feature dirs (those with a
 `plan.md` and **no** `completed.md`, excluding `archived/`). If exactly one, use it; if several, ask
 which; if none, say so and stop.
 
