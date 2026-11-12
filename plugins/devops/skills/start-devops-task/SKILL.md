@@ -16,6 +16,10 @@ allowed-tools: Read, Write, Edit, Bash, Glob, Task
 Five steps: SETUP → TASK → RED → GREEN → CLOSE. One doc (`task.md`) and one `.feature` file.
 The user approves once, after RED, when the task and its failing tests can be read together.
 
+`task.md` is a work record and gets archived at CLOSE. The `.feature` file is a permanent
+regression test, so it lives in the test tree (`scenarios/`), never under `feature-work/` —
+archiving must not move a file that step definitions bind to.
+
 This flow sits between `core:quick-fix` (no new tests) and `bdd-workflow:start-bdd-feature`
 (problem → design → plan). It does not replace either.
 
@@ -59,7 +63,7 @@ Report the absolute worktree path. All later commands run inside it.
 **3. Doc dir.** `feature-work/<slug>/` at the repo root. Never `.claude/`, `superpowers/`, or `docs/`.
 
 ```bash
-mkdir -p feature-work/<slug>/scenarios
+mkdir -p feature-work/<slug>
 date +%Y-%m-%d
 git config user.name
 ```
@@ -69,8 +73,10 @@ which root module, `tofu` or `terraform` (check `.terraform-version`, `.opentofu
 config, `Makefile`/`justfile`), var files, and whether `init` needs backend credentials. If a plan
 cannot be produced on this machine, stop and ask the user — the RED step depends on it.
 
-**5. Test harness.** Check for `pyproject.toml` with `pytest-bdd` and an existing
-`tests/step_defs/`. If either is missing, tell the user what you would add (`uv add --dev
+**5. Test harness.** Check for `pyproject.toml` with `pytest-bdd`, an existing `tests/step_defs/`,
+and where feature files live. Use the repo-root `scenarios/` directory (the `bdd-workflow:pytest-bdd`
+layout) unless the repo already keeps `.feature` files elsewhere outside `feature-work/` — then
+use that location wherever this skill says `scenarios/`. If the harness is missing, tell the user what you would add (`uv add --dev
 pytest pytest-bdd`, a `conftest.py` with the plan fixture below) and get approval before adding
 dependencies. Load `bdd-workflow:pytest-bdd` for step-definition conventions if it is available.
 
@@ -99,7 +105,7 @@ Do not show the doc to the user yet. Go to RED.
 
 Announce: **[RED]**
 
-**1. Scenarios.** Write `feature-work/<slug>/scenarios/<slug>.feature`. One scenario per
+**1. Scenarios.** Write `scenarios/<slug>.feature` (repo root, see SETUP step 5). One scenario per
 Acceptance bullet, same name. Declarative steps about the plan:
 
 ```gherkin
@@ -127,7 +133,8 @@ def plan_json(tmp_path_factory: pytest.TempPathFactory) -> dict:
 `run_tofu` must use `check=True` and include the module path and stderr in its error, so a broken
 plan fails loudly instead of looking like a failed assertion.
 
-**3. Steps.** `tests/step_defs/test_<slug_underscored>.py`. Steps assert on `resource_changes`
+**3. Steps.** `tests/step_defs/test_<slug_underscored>.py`, bound with
+`scenarios("../../scenarios/<slug>.feature")`. Steps assert on `resource_changes`
 (for the planned action: `create`, `update`, `delete`) and on
 `planned_values` / `resource_changes[].change.after` (for attributes). Never grep `.tf` source.
 
@@ -145,7 +152,7 @@ and what the reviewer flagged. Revise until the user approves.
 Commit the tests on approval:
 
 ```bash
-git add feature-work/<slug>/ tests/step_defs/ pyproject.toml uv.lock   # only paths you changed
+git add feature-work/<slug>/ scenarios/<slug>.feature tests/step_defs/ pyproject.toml uv.lock   # only paths you changed
 git commit -m "test(<slug>): add failing plan scenarios"
 ```
 
@@ -183,7 +190,8 @@ Announce: **[CLOSE]**
    the reviews. Nothing merges without a roborev pass or an operator exception.
 2. **Deferred items.** Each **Notes** item that is follow-up work becomes a kata issue. Put the
    issue id next to the note.
-3. **Archive.** Set `status: done`, then:
+3. **Archive.** Set `status: done`, then move the task record. Only `task.md` moves; the
+   `.feature` file and step definitions stay where they are.
 
    ```bash
    mkdir -p feature-work/archived
@@ -191,7 +199,10 @@ Announce: **[CLOSE]**
    git commit -m "docs(<slug>): archive task"
    ```
 
-4. **Report.** List what changed (files), what was verified (commands + pass counts), and what
+4. **Re-verify.** Run every command in **Verify** again (from the archived `task.md`), chained
+   with `&&`. The pass count must match GREEN. A collection error here means a binding pointed
+   into `feature-work/` — fix the binding, not the archive.
+5. **Report.** List what changed (files), what was verified (commands + pass counts), and what
    was skipped. Ask before pushing or opening a PR.
 
 `apply` is never part of this flow. Applying is the user's call, through their normal deploy path.

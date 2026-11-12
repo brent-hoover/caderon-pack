@@ -21,7 +21,7 @@ report findings; you do **not** edit files.
 You are given the absolute path to `task.md`. Then:
 
 1. Read `task.md`. Its **Acceptance** list is the contract.
-2. Read the `.feature` file in the `scenarios/` sibling directory.
+2. Read the `.feature` file named in `task.md`'s **Acceptance** section.
 3. Read the step definition file named in `task.md`'s **Verify** section, and its `conftest.py`.
 4. Read the Terraform/OpenTofu files listed under **Changes**, so you know what the plan currently
    contains and what it would contain after the change.
@@ -45,6 +45,9 @@ You are given the absolute path to `task.md`. Then:
 - **Action check** — For a new resource, a scenario should pin the planned action (`create`).
   Flag a change that could silently plan a `delete` or replace on an existing resource with no
   scenario guarding against it.
+- **Survives archiving** — `task.md` moves to `feature-work/archived/` at the end of the flow.
+  Flag a `.feature` file under `feature-work/`, or a `scenarios(...)` binding that points there:
+  it breaks test collection once the task is archived.
 - **No apply** — Flag any step or fixture that runs `apply`, `destroy`, or touches real state
   beyond `plan` with `-lock=false`.
 - **Gherkin form** — One behavior per scenario, declarative steps, no wrapped step lines (Gherkin

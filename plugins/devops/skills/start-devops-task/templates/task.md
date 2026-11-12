@@ -14,7 +14,8 @@ kata: <issue id, or "none">
 
 ## Acceptance
 
-Each line is one scenario in `scenarios/<slug>.feature`. The scenario name matches the bullet.
+Each line is one scenario in `scenarios/<slug>.feature` (repo root, not under `feature-work/`).
+The scenario name matches the bullet.
 
 - <Scenario name> — <what the plan must show>
 
